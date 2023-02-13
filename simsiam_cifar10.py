@@ -6,12 +6,12 @@ import os
 import torch.nn as nn
 
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
-sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../../")))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../../")))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
+# sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
 
-from BYOL.byol_pytorch import BYOL
+# from BYOL.byol_pytorch import BYOL
 
 resnet = models.resnet50(pretrained=True)
 
@@ -38,7 +38,7 @@ def sample_unlabelled_images():
 # Training loop
 epoch = 1
 for _ in range(epoch):
-    print('running')
+    # print('running')
     images = sample_unlabelled_images()
     loss = learner(images)
     optimizer.zero_grad()
