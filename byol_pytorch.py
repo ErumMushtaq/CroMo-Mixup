@@ -6,6 +6,11 @@ import torch
 from torch import nn
 import torch.nn.functional as F
 
+from PIL import Image, ImageFilter, ImageOps
+from torchvision import transforms 
+# import random
+import numpy
+
 from torchvision import transforms as T
 
 # helper functions
@@ -120,6 +125,7 @@ class NetWrapper(nn.Module):
             return modules.get(self.layer, None)
         elif type(self.layer) == int:
             children = [*self.net.children()]
+            # print(children[self.layer])
             return children[self.layer]
         return None
 
@@ -162,9 +168,24 @@ class NetWrapper(nn.Module):
             return representation
 
         projector = self._get_projector(representation)
+        # print(projector)
         projection = projector(representation)
         return projection, representation
 
+class GaussianBlur(object):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=[0.1, 2.0]):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
+        return x
+
+class Solarization:
+    def __call__(self, img: Image) -> Image:
+        return ImageOps.solarize(img)
 # main class
 
 class BYOL(nn.Module):
@@ -183,12 +204,12 @@ class BYOL(nn.Module):
         super().__init__()
         self.net = net
 
-        # default SimCLR augmentation
+        # default SimCLR augmentation (BYOL Code) + added 
 
         DEFAULT_AUG = torch.nn.Sequential(
             RandomApply(
-                T.ColorJitter(0.8, 0.8, 0.8, 0.2),
-                p = 0.3
+                T.ColorJitter(0.4, 0.4, 0.4, 0.1), #0.4, 0.4, 0.4, 0.1, p=0.8
+                p = 0.8
             ),
             T.RandomGrayscale(p=0.2),
             T.RandomHorizontalFlip(),
@@ -198,15 +219,16 @@ class BYOL(nn.Module):
             ),
             T.RandomResizedCrop((image_size, image_size)),
             T.Normalize(
-                mean=torch.tensor([0.485, 0.456, 0.406]),
-                std=torch.tensor([0.229, 0.224, 0.225])),
+                mean=torch.tensor([0.4914, 0.4822, 0.4465]),
+                std=torch.tensor([0.247, 0.243, 0.261])),
         )
 
         self.augment1 = default(augment_fn, DEFAULT_AUG)
         self.augment2 = default(augment_fn2, self.augment1)
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, use_simsiam_mlp=not use_momentum)
-
+        # print(self.online_encoder)
+        # exit()
         self.use_momentum = use_momentum
         self.target_encoder = None
         self.target_ema_updater = EMA(moving_average_decay)
@@ -248,7 +270,7 @@ class BYOL(nn.Module):
 
         image_one, image_two = self.augment1(x), self.augment2(x)
 
-        online_proj_one, _ = self.online_encoder(image_one)
+        online_proj_one, _ = self.online_encoder(image_one) #return projection, representation 
         online_proj_two, _ = self.online_encoder(image_two)
 
         online_pred_one = self.online_predictor(online_proj_one)

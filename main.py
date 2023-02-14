@@ -26,28 +26,31 @@ from torch import autograd
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
 
-from dataloader_cifar10 import get_cifar10
+from dataloader_cifar10 import get_cifar10, SimSiamTransform
 
 
 # Hyper-Parameters
 batch_size = 512 #512 in SimSiam paper
-lr = 0.001  #paper 0.05
-epoch = 200 # 200 epoch
+lr = 0.05 #paper 0.05
+epoch = 1000 # 200 epoch
 cuda_device = 0
 
 device = torch.device("cuda:" + str(cuda_device) if torch.cuda.is_available() else "cpu")
 
-train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(classes=[5,5],valid_rate = 0.05, batch_size=batch_size, seed = 0)
+train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(classes=[10], valid_rate = 0.05, batch_size=batch_size, seed = 0)
 
-model = models.resnet18(pretrained=True)
+model = models.resnet18(pretrained=False)
 model.to(device)
-learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', use_momentum = False)       # turn off momentum in the target encoder, image size 32, imagenet 256. 
+#projection size
+learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 256, projection_hidden_size = 2048, use_momentum = False)       # turn off momentum in the target encoder, image size 32, projection size taken from new paper. 
 learner.to(device) #automatically detects from model
 
-# SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py), why 256? shall it be 32 for cifar10
-init_lr = lr*batch_size/256
-optimizer = torch.optim.SGD(learner.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
+# SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
 
+init_lr = lr*batch_size/256
+# optimizer = torch.optim.Adam(learner.parameters(), lr=3e-4)
+optimizer = torch.optim.SGD(learner.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
+train_transform = SimSiamTransform(32)
 
 # Training Loop 
 #TODO: add knn accuracy as well.
@@ -61,6 +64,7 @@ for _ in range(epoch):
         print(loss.item())
         optimizer.zero_grad()
         loss.backward()
+        # torch.nn.utils.clip_grad_norm_(learner.parameters(), 5)
         optimizer.step()        
     print(np.mean(epoch_loss))
     loss_.append(np.mean(epoch_loss))
