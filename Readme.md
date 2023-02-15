@@ -2,9 +2,9 @@
 
 1. Added a basic code of simsiam from BYOL repository for resnet50 model + downstream task code.
 2. Go to CL_SSL_BYOL ad run the followig command
-    ```python3 simsiam_cifar10.py```
-2. TODO: @Yavuz Dataloader part
+    ```python3 main.py```
 3. TODO: @erum Matching the optimizers, and hyper-parameters (lr, batch sizes) from the original paper
+4. TODO: @erumcomplete the linear classiffier search
 
 
 

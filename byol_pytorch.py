@@ -204,7 +204,7 @@ class BYOL(nn.Module):
         super().__init__()
         self.net = net
 
-        # default SimCLR augmentation (BYOL Code) + added 
+        # default SimCLR augmentation (BYOL Code) + uppdated color jitter, normalization values
 
         DEFAULT_AUG = torch.nn.Sequential(
             RandomApply(
