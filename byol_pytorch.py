@@ -223,8 +223,8 @@ class BYOL(nn.Module):
                 std=torch.tensor([0.247, 0.243, 0.261])),
         )
 
-        self.augment1 = default(augment_fn, DEFAULT_AUG)
-        self.augment2 = default(augment_fn2, self.augment1)
+        self.augment1 = augment_fn
+        self.augment2 = augment_fn2
 
         self.online_encoder = NetWrapper(net, projection_size, projection_hidden_size, layer=hidden_layer, use_simsiam_mlp=not use_momentum)
         # print(self.online_encoder)
@@ -238,6 +238,8 @@ class BYOL(nn.Module):
         # get device of network and make wrapper same device
         device = get_module_device(net)
         self.to(device)
+        
+        self.device = device
 
         # send a mock image tensor to instantiate singleton parameters
         self.forward(torch.randn(2, 3, image_size, image_size, device=device))
@@ -269,6 +271,9 @@ class BYOL(nn.Module):
             return self.online_encoder(x, return_projection = return_projection)
 
         image_one, image_two = self.augment1(x), self.augment2(x)
+
+        image_one = image_one.to(self.device)
+        image_two = image_two.to(self.device)
 
         online_proj_one, _ = self.online_encoder(image_one) #return projection, representation 
         online_proj_two, _ = self.online_encoder(image_two)
