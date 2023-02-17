@@ -281,6 +281,9 @@ class BYOL(nn.Module):
         online_pred_one = self.online_predictor(online_proj_one)
         online_pred_two = self.online_predictor(online_proj_two)
 
+        # print(online_pred_one.shape)
+        # exit()
+
         with torch.no_grad():
             target_encoder = self._get_target_encoder() if self.use_momentum else self.online_encoder
             target_proj_one, _ = target_encoder(image_one)

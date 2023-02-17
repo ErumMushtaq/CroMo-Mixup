@@ -26,18 +26,20 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
     torch.cuda.empty_cache()
 
     train_features = torch.zeros([feat_dim, n_data], device=device)
+    train_labels = []
     with torch.no_grad():
-        for batch_idx, (inputs, _) in enumerate(train_data_loader):
+        for batch_idx, (inputs, labels) in enumerate(train_data_loader):
             inputs = transform(inputs) # normalize
             inputs = inputs.to(device)
             batch_size = inputs.size(0)
+            train_labels.append(labels)
 
             # forward
             features = encoder.get_representation(inputs)
             features = nn.functional.normalize(features)
             train_features[:, batch_idx * batch_size:batch_idx * batch_size + batch_size] = features.data.t()
 
-        train_labels = torch.LongTensor(train_data_loader.dataset.tensors[1]).cuda()
+        # train_labels = torch.LongTensor(train_data_loader.dataset.tensors[1]).cuda()
 
     total = 0
     correct = 0
@@ -101,7 +103,8 @@ def linear_test(net, data_loader, classifier, epoch):
             data = transform(data)
 
             # Forward prop of the model with single augmented batch
-            feature = net.get_representation(data) 
+            # feature = net.get_representation(data) 
+            feature = net(data)
 
             # Logits by classifier
             output = classifier(feature) 
@@ -132,7 +135,7 @@ def linear_test(net, data_loader, classifier, epoch):
 
 
 
-def linear_train(net, data_loader, train_optimizer, classifier, epoch):
+def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch):
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
     random_crop_size = 32
@@ -152,7 +155,8 @@ def linear_train(net, data_loader, train_optimizer, classifier, epoch):
         pos_1, target = data_tuple
         pos_1 = pos_1.cuda()
         pos_1 = transform(pos_1)
-        feature_1 = net.get_representation(pos_1) 
+        feature_1 = net(pos_1)
+        # feature_1 = net.get_representation(pos_1) 
 
         # Batchsize
         batchsize_bc = feature_1.shape[0]
@@ -186,7 +190,7 @@ def linear_train(net, data_loader, train_optimizer, classifier, epoch):
         # # This bar is used for live tracking on command line (batch_size -> batchsize_bc: to show current batchsize )
         train_bar.set_description('Lin.Train Epoch: [{}] Loss: {:.4f} '.format(\
                 epoch, linear_loss / total_num))
-
+    scheduler.step()
     acc_1 = total_correct_1/total_num*100
     acc_5 = total_correct_5/total_num*100       
     wandb.log({" Linear Layer Train Loss ": linear_loss / total_num, " Epoch ": epoch})
@@ -195,9 +199,9 @@ def linear_train(net, data_loader, train_optimizer, classifier, epoch):
     return linear_loss/total_num, acc_1, acc_5
 
 
-def linear_evaluation(net, data_loader,test_data_loader,train_optimizer,classifier, epochs):
+def linear_evaluation(net, data_loader,test_data_loader,train_optimizer,classifier, scheduler, epochs):
     for epoch in range(1, epochs+1):
-        linear_loss, linear_acc1, linear_acc5 = linear_train(net,data_loader,train_optimizer,classifier,epoch)
+        linear_loss, linear_acc1, linear_acc5 = linear_train(net,data_loader,train_optimizer,classifier,scheduler, epoch)
         with torch.no_grad():
             # Testing for linear evaluation
             test_loss, test_acc1, test_acc5 = linear_test(net, test_data_loader, classifier, epoch)

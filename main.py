@@ -18,6 +18,7 @@ from sklearn.model_selection import train_test_split
 import copy
 import os
 from torch import nn
+from LRScheduler import LinearWarmupCosineAnnealingLR
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = str(4)
 
@@ -34,6 +35,7 @@ import random
 import math
 from eval_metrics import linear_evaluation, Knn_Validation
 from linear_classifer import LinClassifier
+from Simsiam_pytorch import SimSiam
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -42,7 +44,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 # Hyper-Parameters taken from new paper
 batch_size = 512 #512 in SimSiam paper
-lr = 0.2 #paper 0.05
+lr = 0.05 #paper 0.05
 epoch = 1000 # 1000 epoch
 cuda_device = 0
 
@@ -77,7 +79,7 @@ transform = transforms.Compose(
                 transforms.RandomResizedCrop(
                     random_crop_size, 
                     scale=(min_scale, 1.0),
-                    interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
+                    # interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
                 ),
                 Clamp(),
                 transforms.RandomHorizontalFlip(p=0.5),
@@ -86,7 +88,7 @@ transform = transforms.Compose(
                 ),
                 transforms.RandomGrayscale(p=0.2),
                 transforms.RandomApply([GaussianBlur()], p=1.0), 
-                transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
+                # transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ]
         )
@@ -96,7 +98,7 @@ transform_prime = transforms.Compose(
                 transforms.RandomResizedCrop(
                     random_crop_size, 
                     scale=(min_scale, 1.0),
-                    interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
+                    # interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
                 ),
                 Clamp(),
                 transforms.RandomHorizontalFlip(p=0.5),
@@ -105,7 +107,7 @@ transform_prime = transforms.Compose(
                 ),
                 transforms.RandomGrayscale(p=0.2),
                 transforms.RandomApply([GaussianBlur()], p=0.1), 
-                transforms.RandomApply([Solarization()], p=0.2), # Only in VicReg
+                # transforms.RandomApply([Solarization()], p=0.2), # Only in VicReg
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ]
         )
@@ -126,16 +128,26 @@ device = torch.device("cuda:" + str(cuda_device) if torch.cuda.is_available() el
 train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(classes=[10], valid_rate = 0.05, batch_size=batch_size, seed = 0)
 
 #Model and Learner 
-model = models.resnet18(pretrained=False)
-model.to(device)
-learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 256, projection_hidden_size = 2048, use_momentum = False, augment_fn = transform,  augment_fn2 = transform_prime)
-learner.to(device) #automatically detects from model
+# model = models.resnet50(pretrained=False)
+# model.to(device)
+# learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 64, projection_hidden_size = 2048, use_momentum = False, augment_fn = transform,  augment_fn2 = transform_prime)
+# learner.to(device) #automatically detects from model
 
+model = SimSiam(models.__dict__['resnet18'], dim=64, hidden_proj_size = 2048, pred_dim=64, augment_fn = transform, augment_fn2 = transform_prime)
+model.to(device) #automatically detects from model
 # Optimizer and Scheduler
 # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
 init_lr = lr*batch_size/256
-optimizer = torch.optim.SGD(learner.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch, eta_min=2e-3) #scheduler + values ref: infomax paper
+optimizer = torch.optim.SGD(model.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
+# #TODO:double check this Scheduler values
+# scheduler = LinearWarmupCosineAnnealingLR(
+#                         optimizer,
+#                         warmup_epochs=10,
+#                         max_epochs=epochs,
+#                         warmup_start_lr=args.warmup_start_lr,
+#                         eta_min=2e-4,
+#                     )
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
 wandb.init(project="SSL Project", name="SimSiam"
             + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
 
@@ -143,35 +155,35 @@ wandb.init(project="SSL Project", name="SimSiam"
 #TODO: add knn accuracy as well.
 loss_ = []
 for epoch_counter in range(epoch):
-    learner.online_encoder.train()
-    learner.online_predictor.train()
+    model.train()
     epoch_loss = []
     for x, y in train_data_loaders[0]:
         x = x.to(device)
-        loss = learner(x)
+        loss = model(x)
         epoch_loss.append(loss.item())
-        # print(loss.item())
         optimizer.zero_grad()
         loss.backward()
         optimizer.step() 
+
+    #TODO: do HP with linear warmup scheduler as well
     if epoch_counter >= 10: #warmup of 10 epochs #from SimCLR
             scheduler.step()
     # adjust_learning_rate(optimizer, lr, epoch_counter, epoch)       
     print(np.mean(epoch_loss))
     loss_.append(np.mean(epoch_loss))
-    knn_acc = Knn_Validation(learner.online_encoder,train_data_loaders[0],validation_data_loaders[0],device=device, K=20) #TODO: cheeck 200 a good HP for cifar10?
+    #TODO: knn predict
+    # knn_acc = Knn_Validation(learner,train_data_loaders[0],validation_data_loaders[0],device=device, K=200) 
     wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
-    wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
+    # wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
     wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
-    
-    print(f'knn acc: {knn_acc}')
+
 
 classifier =    LinClassifier().to(device)
-lin_optimizer = torch.optim.SGD(classifier.parameters(),  0.001, momentum=0.9, weight_decay=0.0001)
-test_loss, test_acc1, test_acc5 = linear_evaluation(learner.online_encoder, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, epochs= 500)
+lin_epoch = 100
+lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
+lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
+test_loss, test_acc1, test_acc5 = linear_evaluation(model, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, lin_scheduler, epochs= lin_epoch)
 
-# plt.plot(loss_)
-# plt.savefig('loss_iteration')
 
 # save your encoder network
 save_checkpoint({
@@ -182,12 +194,6 @@ save_checkpoint({
                 'optimizer' : optimizer.state_dict(),
                 'loss_':loss_,
             }, is_best=False, filename='checkpoint_{:04f}.pth.tar'.format(lr))
-print(loss)
-
-
-
-# for x,y in train_data_loaders[0]:
-#     print(y)
 
 
 
