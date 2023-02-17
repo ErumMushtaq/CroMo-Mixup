@@ -5,6 +5,7 @@ import torchvision
 import torchvision.transforms as transforms
 from torch import nn
 from torch.nn import functional as F
+import wandb
 
 def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 10):
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
@@ -125,6 +126,8 @@ def linear_test(net, data_loader, classifier, epoch):
                                              ))
         acc_1 = total_correct_1/total_num*100
         acc_5 = total_correct_5/total_num*100
+        wandb.log({" Linear Layer Test Loss ": linear_loss / total_num, " Epoch ": epoch})
+        wandb.log({" Linear Layer Test - Acc": acc_1, " Epoch ": epoch})
     return total_loss / total_num, acc_1 , acc_5 
 
 
@@ -178,13 +181,17 @@ def linear_train(net, data_loader, train_optimizer, classifier, epoch):
         total_correct_1 += linear_correct_1 
         total_correct_5 += linear_correct_5
 
-        # This bar is used for live tracking on command line (batch_size -> batchsize_bc: to show current batchsize )
+
+
+        # # This bar is used for live tracking on command line (batch_size -> batchsize_bc: to show current batchsize )
         train_bar.set_description('Lin.Train Epoch: [{}] Loss: {:.4f} '.format(\
                 epoch, linear_loss / total_num))
-    
+
     acc_1 = total_correct_1/total_num*100
-    acc_5 = total_correct_5/total_num*100
-    
+    acc_5 = total_correct_5/total_num*100       
+    wandb.log({" Linear Layer Train Loss ": linear_loss / total_num, " Epoch ": epoch})
+    wandb.log({" Linear Layer Train - Acc": acc_1, " Epoch ": epoch})
+        
     return linear_loss/total_num, acc_1, acc_5
 
 

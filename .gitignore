@@ -133,7 +133,10 @@ dmypy.json
 data/cifar10/cifar-10-batches-py/
 
 */wandb/
+/wandb/
 .vscode/
 *mnist.npz
+
+*.tar
 
 data/Cifar100

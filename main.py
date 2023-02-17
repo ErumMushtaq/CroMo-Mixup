@@ -9,6 +9,7 @@ from torch.autograd import Variable
 from byol_pytorch import BYOL
 from torchvision import models
 import kornia
+import wandb
 
 import torch
 import torchvision
@@ -30,6 +31,7 @@ from sklearn.utils import shuffle
 from matplotlib import pyplot as plt
 from dataloader_cifar10 import get_cifar10
 import random
+import math
 from eval_metrics import linear_evaluation, Knn_Validation
 from linear_classifer import LinClassifier
 
@@ -40,8 +42,8 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 # Hyper-Parameters taken from new paper
 batch_size = 512 #512 in SimSiam paper
-lr = 0.05 #paper 0.05
-epoch = 1 # 1000 epoch
+lr = 0.2 #paper 0.05
+epoch = 1000 # 1000 epoch
 cuda_device = 0
 
 min_scale = 0.08 
@@ -108,6 +110,16 @@ transform_prime = transforms.Compose(
             ]
         )
 
+def adjust_learning_rate(optimizer, init_lr, epoch, epochs):
+    """Decay the learning rate based on schedule"""
+    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / epochs))
+    for param_group in optimizer.param_groups:
+        if 'fix_lr' in param_group and param_group['fix_lr']:
+            param_group['lr'] = init_lr
+        else:
+            param_group['lr'] = cur_lr
+#wandb logging
+
 
 #Dataloader
 device = torch.device("cuda:" + str(cuda_device) if torch.cuda.is_available() else "cpu")
@@ -123,7 +135,9 @@ learner.to(device) #automatically detects from model
 # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
 init_lr = lr*batch_size/256
 optimizer = torch.optim.SGD(learner.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=len(train_data_loaders), eta_min=0, last_epoch=-1)
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch, eta_min=2e-3) #scheduler + values ref: infomax paper
+wandb.init(project="SSL Project", name="SimSiam"
+            + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
 
 #Training Loop 
 #TODO: add knn accuracy as well.
@@ -140,19 +154,25 @@ for epoch_counter in range(epoch):
         optimizer.zero_grad()
         loss.backward()
         optimizer.step() 
-        if epoch_counter >= 10: #warmup of 10 epochs #from SimCLR
-                scheduler.step()       
+    if epoch_counter >= 10: #warmup of 10 epochs #from SimCLR
+            scheduler.step()
+    # adjust_learning_rate(optimizer, lr, epoch_counter, epoch)       
     print(np.mean(epoch_loss))
     loss_.append(np.mean(epoch_loss))
-    knn_acc = Knn_Validation(learner.online_encoder,train_data_loaders[0],validation_data_loaders[0],device=device,K=200)
+    knn_acc = Knn_Validation(learner.online_encoder,train_data_loaders[0],validation_data_loaders[0],device=device, K=20) #TODO: cheeck 200 a good HP for cifar10?
+    wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
+    wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
+    wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
+    
     print(f'knn acc: {knn_acc}')
 
 classifier =    LinClassifier().to(device)
 lin_optimizer = torch.optim.SGD(classifier.parameters(),  0.001, momentum=0.9, weight_decay=0.0001)
-test_loss, test_acc1, test_acc5 = linear_evaluation(learner.online_encoder, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, epochs= 10)
+test_loss, test_acc1, test_acc5 = linear_evaluation(learner.online_encoder, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, epochs= 500)
 
-plt.plot(loss_)
-plt.savefig('loss_iteration')
+# plt.plot(loss_)
+# plt.savefig('loss_iteration')
+
 # save your encoder network
 save_checkpoint({
                 'epoch': epoch + 1,
