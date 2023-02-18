@@ -152,7 +152,6 @@ wandb.init(project="SSL Project", name="SimSiam"
             + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
 
 #Training Loop 
-#TODO: add knn accuracy as well.
 loss_ = []
 for epoch_counter in range(epoch):
     model.train()
@@ -167,14 +166,14 @@ for epoch_counter in range(epoch):
 
     #TODO: do HP with linear warmup scheduler as well
     if epoch_counter >= 10: #warmup of 10 epochs #from SimCLR
-            scheduler.step()
+        scheduler.step()
     # adjust_learning_rate(optimizer, lr, epoch_counter, epoch)       
     print(np.mean(epoch_loss))
     loss_.append(np.mean(epoch_loss))
     #TODO: knn predict
-    # knn_acc = Knn_Validation(learner,train_data_loaders[0],validation_data_loaders[0],device=device, K=200) 
+    knn_acc = Knn_Validation(model,train_data_loaders[0],validation_data_loaders[0],device=device, K=200) 
     wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
-    # wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
+    wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
     wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
 

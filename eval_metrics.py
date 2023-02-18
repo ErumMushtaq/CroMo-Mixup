@@ -7,14 +7,12 @@ from torch import nn
 from torch.nn import functional as F
 import wandb
 
-def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 10):
+def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 10,sigma = 0.1):#sigma is for
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
     random_crop_size = 32
     transform = transforms.Compose(
             [   
-                transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC), # In Imagenet: 224 -> 256 
-                transforms.CenterCrop(random_crop_size),
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ])
     """Extract features from validation split and search on train split features."""
@@ -24,42 +22,57 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
     encoder.eval()
     encoder.to(device)
     torch.cuda.empty_cache()
-
-    train_features = torch.zeros([feat_dim, n_data], device=device)
+    train_features = []
     train_labels = []
+    total = 0
+    
     with torch.no_grad():
-        for batch_idx, (inputs, labels) in enumerate(train_data_loader):
+        for batch_idx, (inputs, t_label) in enumerate(train_data_loader):
             inputs = transform(inputs) # normalize
             inputs = inputs.to(device)
             batch_size = inputs.size(0)
-            train_labels.append(labels)
 
             # forward
-            features = encoder.get_representation(inputs)
+            features = encoder(inputs)
             features = nn.functional.normalize(features)
-            train_features[:, batch_idx * batch_size:batch_idx * batch_size + batch_size] = features.data.t()
+            train_features.append(features.data.t())
+            train_labels.append(t_label.cuda())
+            total += batch_size
 
-        # train_labels = torch.LongTensor(train_data_loader.dataset.tensors[1]).cuda()
+        #train_labels = torch.LongTensor(train_data_loader.dataset.tensors[1]).cuda()
+        train_features = torch.cat(train_features,dim = 1)
+        train_labels = torch.cat(train_labels)
 
     total = 0
     correct = 0
+    C = train_labels.max() + 1
+    top1 = 0
     with torch.no_grad():
+        retrieval_one_hot = torch.zeros(K, C).cuda()
         for batch_idx, (inputs, targets) in enumerate(validation_data_loader):
             targets = targets.cuda(non_blocking=True)
             batch_size = inputs.size(0)
             inputs = transform(inputs)
-            features = encoder.get_representation(inputs.to(device))
+            features = encoder(inputs.to(device))
 
             dist = torch.mm(features, train_features)
             yd, yi = dist.topk(K, dim=1, largest=True, sorted=True)
+            
             candidates = train_labels.view(1, -1).expand(batch_size, -1)
             retrieval = torch.gather(candidates, 1, yi)
 
-            retrieval = retrieval.narrow(1, 0, 1).clone().view(-1)
+            retrieval_one_hot.resize_(batch_size * K, C).zero_()
+            retrieval_one_hot.scatter_(1, retrieval.view(-1, 1), 1)
+            yd_transform = yd.clone().div_(sigma).exp_()
+            probs = torch.sum(torch.mul(retrieval_one_hot.view(batch_size, -1 , C), yd_transform.view(batch_size, -1, 1)), 1)
+            _, predictions = probs.sort(1, True)
 
+            #retrieval = retrieval.narrow(1, 0, 1).clone().view(-1)
             total += targets.size(0)
-            correct += retrieval.eq(targets.data).sum().item()
-    top1 = correct / total
+            correct = predictions.eq(targets.data.view(-1,1))
+            top1 = top1 + correct.narrow(1,0,1).sum().item()
+            #correct += retrieval.eq(targets.data).sum().item()
+    top1 = top1 / total
 
     return top1
 
