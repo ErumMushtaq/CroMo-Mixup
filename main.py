@@ -56,12 +56,13 @@ random_crop_size = 32
 class GaussianBlur(object):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
 
-    def __init__(self, sigma=[0.1, 2.0]):
+    def __init__(self, sigma=[0.1, 2.0],kernel_size=[1,1]):
         self.sigma = sigma
+        self.kernel_size = kernel_size
 
     def __call__(self, x):
         sigma = random.uniform(self.sigma[0], self.sigma[1])
-        torchvision.transforms.functional.gaussian_blur(x,kernel_size=[3,3],sigma=sigma)#kernel size and sigma are open problems but right now seems ok!
+        torchvision.transforms.functional.gaussian_blur(x,kernel_size=self.kernel_size,sigma=sigma)#kernel size [0.1, 0.1] and sigma are open problems but right now seems ok!
         #x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
         return x
 
@@ -81,13 +82,13 @@ transform = transforms.Compose(
                     scale=(min_scale, 1.0),
                     # interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
                 ),
-                Clamp(),
+                # Clamp(), 
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)], p=0.8
+                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8
                 ),
                 transforms.RandomGrayscale(p=0.2),
-                transforms.RandomApply([GaussianBlur()], p=1.0), 
+                transforms.RandomApply([GaussianBlur(kernel_size=[3,3])], p=0.5), 
                 # transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ]
@@ -100,13 +101,13 @@ transform_prime = transforms.Compose(
                     scale=(min_scale, 1.0),
                     # interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
                 ),
-                Clamp(),
+                # Clamp(),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)], p=0.8
+                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8
                 ),
                 transforms.RandomGrayscale(p=0.2),
-                transforms.RandomApply([GaussianBlur()], p=0.1), 
+                transforms.RandomApply([GaussianBlur(kernel_size=[3,3])], p=0.5), 
                 # transforms.RandomApply([Solarization()], p=0.2), # Only in VicReg
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ]
@@ -133,11 +134,11 @@ train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(cla
 # learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 64, projection_hidden_size = 2048, use_momentum = False, augment_fn = transform,  augment_fn2 = transform_prime)
 # learner.to(device) #automatically detects from model
 
-model = SimSiam(models.__dict__['resnet18'], dim=64, hidden_proj_size = 2048, pred_dim=64, augment_fn = transform, augment_fn2 = transform_prime)
+model = SimSiam(models.__dict__['resnet18'], dim=2048, hidden_proj_size = 2048, pred_dim=512, augment_fn = transform, augment_fn2 = transform_prime)
 model.to(device) #automatically detects from model
 # Optimizer and Scheduler
 # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
-init_lr = lr*batch_size/256
+init_lr = lr #*batch_size/256
 optimizer = torch.optim.SGD(model.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
 # #TODO:double check this Scheduler values
 # scheduler = LinearWarmupCosineAnnealingLR(
