@@ -5,76 +5,70 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
-import torch.nn as nn
+from torch import nn, optim
 import torch.nn.functional as F
+from resnet import resnetc18
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
     y = F.normalize(y, dim=-1, p=2)
     return 2 - 2 * (x * y).sum(dim=-1)
 
-class SimSiam(nn.Module):
-    """
-    Build a SimSiam model.
-    """
-    def __init__(self, base_encoder, dim=64, hidden_proj_size = 2048, pred_dim=2048, augment_fn = None,
-        augment_fn2 = None):
-        """
-        dim: feature dimension (default: 2048)
-        pred_dim: hidden dimension of the predictor (default: 512)
-        """
-        super(SimSiam, self).__init__()
 
-        # create the encoder
-        # num_classes is the output fc dimension, zero-initialize last BNs
-        self.encoder = base_encoder(num_classes=dim, zero_init_residual=True)
-        # self.encoder = base_encoder
-        # build a 3-layer projector
-        prev_dim = self.encoder.fc.weight.shape[1]
-        self.augment1 = augment_fn
-        self.augment2 = augment_fn2
+class Encoder(nn.Module):
 
-        hidden_proj_size = 2048
-        self.encoder.fc = nn.Sequential(nn.Linear(prev_dim, hidden_proj_size, bias=False),
-                                        nn.BatchNorm1d(hidden_proj_size),
-                                        nn.ReLU(inplace=True), # first layer #[BS,hidden_proj_size]
-                                        nn.Linear(hidden_proj_size, hidden_proj_size, bias=False),
-                                        nn.BatchNorm1d(hidden_proj_size),
-                                        nn.ReLU(inplace=True), # second layer ##[BS,hidden_proj_size]
-                                        nn.Linear(hidden_proj_size, dim, bias=False),
-                                        # self.encoder.fc,
-                                        nn.BatchNorm1d(dim, affine=False) ##[BS, dim]
-                                        ) # output layer
-        # self.encoder.fc[6].bias.requires_grad = False # hack: not use bias as it is followed by BN
-
-        # build a 2-layer predictor
-        #TODO: double check predictor's hidden dimensions may be from ssfl
-        self.predictor = nn.Sequential(nn.Linear(dim, pred_dim, bias=False),
-                                        nn.BatchNorm1d(pred_dim),
-                                        nn.ReLU(inplace=True), # hidden layer
-                                        nn.Linear(pred_dim, dim)) # output layer ##[BS, dim]??
-    
-        # output embedding of avgpool
-        self.encoder.avgpool.register_forward_hook(self._get_avg_output())
-        self.embedding = None
-
-    def _get_avg_output(self):
-        def hook(model, input, output):
-            self.embedding = output.detach()
-        return hook
+    def __init__(self, hidden_dim=None, output_dim=2048):
+        super().__init__()
+        resnet = resnetc18()
+        input_dim = resnet.fc.in_features
+        if hidden_dim is None:
+            hidden_dim = output_dim
+        resnet_headless = nn.Sequential(*list(resnet.children())[:-1])
+        resnet_headless.output_dim = input_dim
+        self.backbone = resnet_headless
+        self.projector = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, output_dim),
+            nn.BatchNorm1d(output_dim)
+        )
 
     def forward(self, x):
-        """
-        Input:
-            x
-        Output:
-            p1, p2, z1, z2: predictors and targets of the network
-            See Sec. 3 of https://arxiv.org/abs/2011.10566 for detailed notations
-        """
+        out = self.backbone(x).squeeze()
+        out = self.projector(out)
+        return out
 
-        # compute features for one view
+
+class Predictor(nn.Module):
+
+    def __init__(self, input_dim=2048, hidden_dim=512, output_dim=2048):
+        super().__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim)
+        self.bn1 = nn.BatchNorm1d(hidden_dim)
+        self.fc2 = nn.Linear(hidden_dim, output_dim)
+
+    def forward(self, x):
+        out = F.relu(self.bn1(self.fc1(x)))
+        out = self.fc2(out)
+        return out
+
+
+class SimSiam(nn.Module):
+
+    def __init__(self, encoder, predictor, augment_fn = None,
+        augment_fn2 = None):
+        super().__init__()
+        self.encoder = encoder
+        self.predictor = predictor
+        self.augment1 = augment_fn
+        self.augment2 = augment_fn2
+        
+    def forward(self, x):
+        device = next(self.parameters()).device
         if self.training:
             x1, x2 = self.augment1(x), self.augment2(x)
+            x1, x2 = x1.to(device), x2.to(device)
             z1 = self.encoder(x1) # NxC
             z2 = self.encoder(x2) # NxC
 
@@ -87,7 +81,18 @@ class SimSiam(nn.Module):
             loss = loss_one + loss_two
             return loss.mean()
         else:
-            _ = self.encoder(x)
-            return self.embedding.squeeze()
+            out = self.encoder.backbone(x)
+            out = out.squeeze()
+            return out
+        
+        
+class LinearClassifier(nn.Module):
 
-        # return p1, p2, z1.detach(), z2.detach()
+    def __init__(self, input_dim, num_classes=10):
+        super().__init__()
+        self.fc = nn.Linear(input_dim, num_classes)
+
+    def forward(self, x):
+        out = x.squeeze()
+        out = F.softmax(self.fc(out), dim=1)
+        return out

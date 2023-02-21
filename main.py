@@ -20,7 +20,7 @@ import os
 from torch import nn
 from LRScheduler import LinearWarmupCosineAnnealingLR
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = str(6)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(4)
 
 from collections import OrderedDict
 from copy import deepcopy
@@ -35,7 +35,8 @@ import random
 import math
 from eval_metrics import linear_evaluation, Knn_Validation
 from linear_classifer import LinClassifier
-from Simsiam_pytorch import SimSiam
+from Simsiam_pytorch import Encoder, Predictor, SimSiam
+
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -44,8 +45,8 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 
 # Hyper-Parameters taken from new paper
 batch_size = 512 #512 in SimSiam paper
-lr = 0.05 #paper 0.05
-epoch = 2000 # 1000 epoch
+lr = 0.06 #paper 0.05
+epoch = 1000 # 1000 epoch
 cuda_device = 0
 
 min_scale = 0.08 
@@ -124,8 +125,15 @@ train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(cla
 # learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 64, projection_hidden_size = 2048, use_momentum = False, augment_fn = transform,  augment_fn2 = transform_prime)
 # learner.to(device) #automatically detects from model
 
-model = SimSiam(models.__dict__['resnet18'], dim=2048, hidden_proj_size = 2048, pred_dim=512, augment_fn = transform, augment_fn2 = transform_prime)
+proj_hidden = 2048
+proj_out = 2048
+pred_hidden = 512
+pred_out = 2048
+encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
+model = SimSiam(encoder, predictor,augment_fn=transform,augment_fn2=transform_prime)
 model.to(device) #automatically detects from model
+
 # Optimizer and Scheduler
 # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
 init_lr = lr #*batch_size/256
@@ -148,7 +156,7 @@ for epoch_counter in range(epoch):
     model.train()
     epoch_loss = []
     for x, y in train_data_loaders[0]:
-        x = x.to(device)
+        #x = x.to(device)
         loss = model(x)
         epoch_loss.append(loss.item())
         optimizer.zero_grad()

@@ -8,7 +8,7 @@ from torch.nn import functional as F
 import wandb
 
 
-def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 200,sigma = 0.1,kn_predict=False):#sigma is for
+def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 200,sigma = 0.1):#sigma is for
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
     random_crop_size = 32
