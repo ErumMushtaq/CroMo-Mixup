@@ -20,7 +20,7 @@ import os
 from torch import nn
 from LRScheduler import LinearWarmupCosineAnnealingLR
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = str(4)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(6)
 
 from collections import OrderedDict
 from copy import deepcopy
@@ -45,7 +45,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 # Hyper-Parameters taken from new paper
 batch_size = 512 #512 in SimSiam paper
 lr = 0.05 #paper 0.05
-epoch = 1000 # 1000 epoch
+epoch = 2000 # 1000 epoch
 cuda_device = 0
 
 min_scale = 0.08 
@@ -56,39 +56,31 @@ random_crop_size = 32
 class GaussianBlur(object):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
 
-    def __init__(self, sigma=[0.1, 2.0],kernel_size=[1,1]):
+    def __init__(self, sigma=[0.1, 2.0]):
         self.sigma = sigma
-        self.kernel_size = kernel_size
 
     def __call__(self, x):
         sigma = random.uniform(self.sigma[0], self.sigma[1])
-        torchvision.transforms.functional.gaussian_blur(x,kernel_size=self.kernel_size,sigma=sigma)#kernel size [0.1, 0.1] and sigma are open problems but right now seems ok!
-        #x = x.filter(ImageFilter.GaussianBlur(radius=sigma))
+        x = torchvision.transforms.functional.gaussian_blur(x,kernel_size=[3,3],sigma=sigma)#kernel size and sigma are open problems but right now seems ok!
         return x
 
 class Solarization:
     def __call__(self, img):
         return torchvision.transforms.functional.solarize(img,threshold = 0.5)#th value is compatible with PIL documentation
 
-class Clamp:
-    def __call__(self, img):
-        img = torch.clamp(img,min=0.0,max=1.0)
-        return img
 
 transform = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
                     random_crop_size, 
-                    scale=(min_scale, 1.0),
-                    # interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
+                    scale=(min_scale, 1.0)
                 ),
-                # Clamp(), 
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8
+                    [transforms.ColorJitter(brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.1, 0.1])], p=0.8
                 ),
                 transforms.RandomGrayscale(p=0.2),
-                transforms.RandomApply([GaussianBlur(kernel_size=[3,3])], p=0.5), 
+                transforms.RandomApply([GaussianBlur()], p=0.5), 
                 # transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ]
@@ -98,17 +90,15 @@ transform_prime = transforms.Compose(
             [
                 transforms.RandomResizedCrop(
                     random_crop_size, 
-                    scale=(min_scale, 1.0),
-                    # interpolation=transforms.InterpolationMode.BICUBIC, # Only in VicReg
+                    scale=(min_scale, 1.0)
                 ),
-                # Clamp(),
                 transforms.RandomHorizontalFlip(p=0.5),
                 transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)], p=0.8
+                    [transforms.ColorJitter(brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.1, 0.1])], p=0.8
                 ),
                 transforms.RandomGrayscale(p=0.2),
-                transforms.RandomApply([GaussianBlur(kernel_size=[3,3])], p=0.5), 
-                # transforms.RandomApply([Solarization()], p=0.2), # Only in VicReg
+                transforms.RandomApply([GaussianBlur()], p=0.5), 
+                # transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ]
         )
@@ -126,7 +116,7 @@ def adjust_learning_rate(optimizer, init_lr, epoch, epochs):
 
 #Dataloader
 device = torch.device("cuda:" + str(cuda_device) if torch.cuda.is_available() else "cpu")
-train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(classes=[10], valid_rate = 0.05, batch_size=batch_size, seed = 0)
+train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(classes=[10], valid_rate = 0.00, batch_size=batch_size, seed = 0)
 
 #Model and Learner 
 # model = models.resnet50(pretrained=False)
@@ -139,7 +129,7 @@ model.to(device) #automatically detects from model
 # Optimizer and Scheduler
 # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
 init_lr = lr #*batch_size/256
-optimizer = torch.optim.SGD(model.parameters(), init_lr, momentum=0.9, weight_decay=0.0001)
+optimizer = torch.optim.SGD(model.parameters(), init_lr, momentum=0.9, weight_decay= 5e-4)
 # #TODO:double check this Scheduler values
 # scheduler = LinearWarmupCosineAnnealingLR(
 #                         optimizer,
@@ -148,7 +138,7 @@ optimizer = torch.optim.SGD(model.parameters(), init_lr, momentum=0.9, weight_de
 #                         warmup_start_lr=args.warmup_start_lr,
 #                         eta_min=2e-4,
 #                     )
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
+scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
 wandb.init(project="SSL Project", name="SimSiam"
             + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
 
@@ -166,13 +156,13 @@ for epoch_counter in range(epoch):
         optimizer.step() 
 
     #TODO: do HP with linear warmup scheduler as well
-    if epoch_counter >= 10: #warmup of 10 epochs #from SimCLR
-        scheduler.step()
+    scheduler.step()
+
     # adjust_learning_rate(optimizer, lr, epoch_counter, epoch)       
     print(np.mean(epoch_loss))
     loss_.append(np.mean(epoch_loss))
     #TODO: knn predict
-    knn_acc = Knn_Validation(model,train_data_loaders[0],validation_data_loaders[0],device=device, K=200) 
+    knn_acc = Knn_Validation(model,train_data_loaders[0],test_data_loaders[0],device=device, K=200) 
     wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
     wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
     wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
@@ -180,7 +170,7 @@ for epoch_counter in range(epoch):
 
 classifier =    LinClassifier().to(device)
 lin_epoch = 100
-lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
+lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
 lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
 test_loss, test_acc1, test_acc5 = linear_evaluation(model, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, lin_scheduler, epochs= lin_epoch)
 

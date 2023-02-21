@@ -7,7 +7,8 @@ from torch import nn
 from torch.nn import functional as F
 import wandb
 
-def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 10,sigma = 0.1):#sigma is for
+
+def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 200,sigma = 0.1,kn_predict=False):#sigma is for
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
     random_crop_size = 32
@@ -16,9 +17,6 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ])
     """Extract features from validation split and search on train split features."""
-    n_data = train_data_loader.dataset.tensors[0].shape[0]
-    feat_dim = 512 # hardcoded for Resnet18
-
     encoder.eval()
     encoder.to(device)
     torch.cuda.empty_cache()
@@ -66,7 +64,7 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
             yd_transform = yd.clone().div_(sigma).exp_()
             probs = torch.sum(torch.mul(retrieval_one_hot.view(batch_size, -1 , C), yd_transform.view(batch_size, -1, 1)), 1)
             _, predictions = probs.sort(1, True)
-
+           
             #retrieval = retrieval.narrow(1, 0, 1).clone().view(-1)
             total += targets.size(0)
             correct = predictions.eq(targets.data.view(-1,1))
@@ -101,7 +99,7 @@ def linear_test(net, data_loader, classifier, epoch):
     random_crop_size = 32
     transform = transforms.Compose(
             [   
-                transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC), # In Imagenet: 224 -> 256 
+                transforms.Resize(int(random_crop_size*(8/7))), # In Imagenet: 224 -> 256 
                 transforms.CenterCrop(random_crop_size),
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ])
@@ -154,7 +152,7 @@ def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch
     random_crop_size = 32
     transform = transforms.Compose(
             [
-                transforms.RandomResizedCrop(random_crop_size, interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                transforms.RandomResizedCrop(random_crop_size), # scale=(0.2, 1.0) is possible
                 transforms.RandomHorizontalFlip(),
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ])

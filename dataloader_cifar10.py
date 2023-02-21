@@ -57,7 +57,7 @@ def get_cifar10(classes=[5,5],valid_rate = 0.05, seed = 0,batch_size = 128):
         ytest = data[k]['test']['y']
 
         train_data_loaders.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True))
-        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=True))
-        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=True))
+        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False))
+        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False))
 
     return train_data_loaders, test_data_loaders, validation_data_loaders
