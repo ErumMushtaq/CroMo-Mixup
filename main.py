@@ -162,7 +162,6 @@ if __name__ == "__main__":
             optimizer.zero_grad()
             loss.backward()
             optimizer.step() 
-            break
 
         #TODO: do HP with linear warmup scheduler as well
         scheduler.step()
