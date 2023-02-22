@@ -13,14 +13,14 @@ import wandb
 
 import torch
 import torchvision
-import torchvision.transforms as transforms
+import torchvision.transforms as T
 from sklearn.model_selection import train_test_split
 import copy
 import os
 from torch import nn
 from LRScheduler import LinearWarmupCosineAnnealingLR
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
-os.environ["CUDA_VISIBLE_DEVICES"] = str(4)
+os.environ["CUDA_VISIBLE_DEVICES"] = str(5)
 
 from collections import OrderedDict
 from copy import deepcopy
@@ -70,39 +70,19 @@ class Solarization:
         return torchvision.transforms.functional.solarize(img,threshold = 0.5)#th value is compatible with PIL documentation
 
 
-transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    random_crop_size, 
-                    scale=(min_scale, 1.0)
-                ),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.1, 0.1])], p=0.8
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                transforms.RandomApply([GaussianBlur()], p=0.5), 
-                # transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ]
-        )
+transform = T.Compose([
+            T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+            T.RandomHorizontalFlip(),
+            T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+            T.RandomGrayscale(p=0.2),
+            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
-transform_prime = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(
-                    random_crop_size, 
-                    scale=(min_scale, 1.0)
-                ),
-                transforms.RandomHorizontalFlip(p=0.5),
-                transforms.RandomApply(
-                    [transforms.ColorJitter(brightness=[0.6, 1.4], contrast=[0.6, 1.4], saturation=[0.6, 1.4], hue=[-0.1, 0.1])], p=0.8
-                ),
-                transforms.RandomGrayscale(p=0.2),
-                transforms.RandomApply([GaussianBlur()], p=0.5), 
-                # transforms.RandomApply([Solarization()], p=0.0), # Only in VicReg
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ]
-        )
+transform_prime = T.Compose([
+            T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+            T.RandomHorizontalFlip(),
+            T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+            T.RandomGrayscale(p=0.2),
+            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
 def adjust_learning_rate(optimizer, init_lr, epoch, epochs):
     """Decay the learning rate based on schedule"""
@@ -170,7 +150,7 @@ for epoch_counter in range(epoch):
     print(np.mean(epoch_loss))
     loss_.append(np.mean(epoch_loss))
     #TODO: knn predict
-    knn_acc = Knn_Validation(model,train_data_loaders[0],test_data_loaders[0],device=device, K=200) 
+    knn_acc = Knn_Validation(model,train_data_loaders[0],test_data_loaders[0],device=device, K=200,sigma=0.5) 
     wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
     wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
     wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
