@@ -20,6 +20,7 @@ import copy
 import os
 from torch import nn
 from LRScheduler import LinearWarmupCosineAnnealingLR
+from SimSiamScheduler import SimSiamScheduler
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = str(5)
 
@@ -47,7 +48,7 @@ def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
 # Hyper-Parameters taken from new paper
 batch_size = 512 #512 in SimSiam paper
 lr = 0.06 #paper 0.05
-epoch = 1000 # 1000 epoch
+epoch = 800 # 1000 epoch
 cuda_device = 0
 
 min_scale = 0.08 
@@ -78,6 +79,17 @@ def add_args(parser):
     return a parser added with args required by fit
     """
     # Training settings
+
+
+    parser.add_argument('--pretrain_batch_size', type=int, default=512)
+    parser.add_argument('--pretrain_warmup_epochs', type=int, default=0)
+    parser.add_argument('--pretrain_warmup_lr', type=float, default=0)
+    parser.add_argument('--pretrain_base_lr', type=float, default=0.03)
+    parser.add_argument('--pretrain_momentum', type=float, default=0.9)
+    parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
+    parser.add_argument('--init_pretrain_epoch', type=int, default=1)
+    parser.add_argument('--final_pretrain_epoch', type=int, default=800)
+
     parser.add_argument('--cuda_device', type=int, default=0, metavar='N',
                         help='device id')
 
@@ -136,7 +148,7 @@ if __name__ == "__main__":
     # Optimizer and Scheduler
     # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
     init_lr = args.lr #*batch_size/256
-    optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=0.9, weight_decay= 5e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.pretrain_base_lr*args.pretrain_batch_size/256., momentum=0.9, weight_decay= 5e-4)
     # #TODO:double check this Scheduler values
     # scheduler = LinearWarmupCosineAnnealingLR(
     #                         optimizer,
@@ -145,9 +157,13 @@ if __name__ == "__main__":
     #                         warmup_start_lr=args.warmup_start_lr,
     #                         eta_min=2e-4,
     #                     )
+    # scheduler = SimSiamScheduler(optimizer, 
+    #                              warmup_epochs=args.pretrain_warmup_epochs, warmup_lr=args.pretrain_warmup_lr*args.pretrain_batch_size/256., 
+    #                              num_epochs=args.final_pretrain_epoch, base_lr=args.pretrain_base_lr*args.pretrain_batch_size/256., final_lr=0, iter_per_epoch=len(train_data_loaders), 
+    #                              constant_predictor_lr=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
     wandb.init(project="SSL Project", name="SimSiam"
-                + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
+                + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(args.pretrain_base_lr))
 
     #Training Loop 
     loss_ = []
@@ -169,9 +185,10 @@ if __name__ == "__main__":
         print(np.mean(epoch_loss))
         loss_.append(np.mean(epoch_loss))
         #TODO: knn predict
-        knn_acc = Knn_Validation(model, train_data_loaders_knn[0],test_data_loaders[0],device=device, K=200,sigma=0.5) 
-        wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
-        wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
+        if epoch_counter % 10 == 0:
+            knn_acc = Knn_Validation(model, train_data_loaders_knn[0],test_data_loaders[0],device=device, K=200,sigma=0.5) 
+            wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
+        wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
         wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
 
@@ -179,7 +196,7 @@ if __name__ == "__main__":
     lin_epoch = 100
     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
-    test_loss, test_acc1, test_acc5 = linear_evaluation(model, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, lin_scheduler, epochs= lin_epoch)
+    test_loss, test_acc1, test_acc5 = linear_evaluation(model, train_data_loaders_knn[0],test_data_loaders[0],lin_optimizer,classifier, lin_scheduler, epochs= lin_epoch)
 
 
     # save your encoder network

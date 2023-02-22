@@ -49,11 +49,12 @@ class SimSiam_Dataloader(Dataset):
 
     def __getitem__(self, idx):
         y = self.label_data[idx]
+        # print(self.train_data[idx].shape)
         if self.is_knn == 0:
             x1 = self.transform(self.train_data[idx])
             x2 = self.transform_prime(self.train_data[idx])           
             return x1, x2, y
         else:
-            x = self.basic_transform(self.train_data[idx])
+            x = self.train_data[idx]
             return x, y
 

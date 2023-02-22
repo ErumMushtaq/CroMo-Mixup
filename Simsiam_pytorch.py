@@ -12,7 +12,7 @@ from resnet import resnetc18
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
     y = F.normalize(y, dim=-1, p=2)
-    return 2 - 2 * (x * y).sum(dim=-1)
+    return  - (x * y).sum(dim=-1).mean()
 
 
 class Encoder(nn.Module):
@@ -78,7 +78,7 @@ class SimSiam(nn.Module):
             loss_one = loss_fn(p1, z2.detach())
             loss_two = loss_fn(p2, z1.detach())
 
-            loss = loss_one + loss_two
+            loss = 0.5*loss_one + 0.5*loss_two
             return loss.mean()
         else:
             out = self.encoder.backbone(x1)
