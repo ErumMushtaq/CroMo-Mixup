@@ -157,7 +157,6 @@ if __name__ == "__main__":
         for x1, x2, y in train_data_loaders[0]:
             #x = x.to(device)
             loss = model(x1, x2)
-
             epoch_loss.append(loss.item())
             optimizer.zero_grad()
             loss.backward()
