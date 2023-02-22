@@ -10,6 +10,7 @@ from byol_pytorch import BYOL
 from torchvision import models
 import kornia
 import wandb
+import argparse
 
 import torch
 import torchvision
@@ -70,108 +71,128 @@ class Solarization:
         return torchvision.transforms.functional.solarize(img,threshold = 0.5)#th value is compatible with PIL documentation
 
 
-transform = T.Compose([
-            T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-            T.RandomHorizontalFlip(),
-            T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
-            T.RandomGrayscale(p=0.2),
-            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
-transform_prime = T.Compose([
-            T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-            T.RandomHorizontalFlip(),
-            T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
-            T.RandomGrayscale(p=0.2),
-            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+def add_args(parser):
+    """
+    parser : argparse.ArgumentParser
+    return a parser added with args required by fit
+    """
+    # Training settings
+    parser.add_argument('--cuda_device', type=int, default=0, metavar='N',
+                        help='device id')
 
-def adjust_learning_rate(optimizer, init_lr, epoch, epochs):
-    """Decay the learning rate based on schedule"""
-    cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / epochs))
-    for param_group in optimizer.param_groups:
-        if 'fix_lr' in param_group and param_group['fix_lr']:
-            param_group['lr'] = init_lr
-        else:
-            param_group['lr'] = cur_lr
+    parser.add_argument('--lr', type=float, default=0.01, metavar='N',
+                        help='Learning rate')
+
+    args = parser.parse_args()
+    return args
+# transform = T.Compose([
+#             T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+#             T.RandomHorizontalFlip(),
+#             T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+#             T.RandomGrayscale(p=0.2),
+#             T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+
+# transform_prime = T.Compose([
+#             T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+#             T.RandomHorizontalFlip(),
+#             T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+#             T.RandomGrayscale(p=0.2),
+#             T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+
+# def adjust_learning_rate(optimizer, init_lr, epoch, epochs):
+#     """Decay the learning rate based on schedule"""
+#     cur_lr = init_lr * 0.5 * (1. + math.cos(math.pi * epoch / epochs))
+#     for param_group in optimizer.param_groups:
+#         if 'fix_lr' in param_group and param_group['fix_lr']:
+#             param_group['lr'] = init_lr
+#         else:
+#             param_group['lr'] = cur_lr
 #wandb logging
 
+if __name__ == "__main__":
+    # parse python script input parameters
+    parser = argparse.ArgumentParser()
+    args = add_args(parser)
+    #Dataloader
+    device = torch.device("cuda:" + str(args.cuda_device) if torch.cuda.is_available() else "cpu")
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders = get_cifar10(classes=[10], valid_rate = 0.00, batch_size=batch_size, seed = 0)
 
-#Dataloader
-device = torch.device("cuda:" + str(cuda_device) if torch.cuda.is_available() else "cpu")
-train_data_loaders, test_data_loaders, validation_data_loaders = get_cifar10(classes=[10], valid_rate = 0.00, batch_size=batch_size, seed = 0)
+    #Model and Learner 
+    # model = models.resnet50(pretrained=False)
+    # model.to(device)
+    # learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 64, projection_hidden_size = 2048, use_momentum = False, augment_fn = transform,  augment_fn2 = transform_prime)
+    # learner.to(device) #automatically detects from model
 
-#Model and Learner 
-# model = models.resnet50(pretrained=False)
-# model.to(device)
-# learner = BYOL(model, image_size = 32, hidden_layer = 'avgpool', projection_size = 64, projection_hidden_size = 2048, use_momentum = False, augment_fn = transform,  augment_fn2 = transform_prime)
-# learner.to(device) #automatically detects from model
+    proj_hidden = 2048
+    proj_out = 2048
+    pred_hidden = 512
+    pred_out = 2048
+    encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+    predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
+    model = SimSiam(encoder, predictor)
+    model.to(device) #automatically detects from model
 
-proj_hidden = 2048
-proj_out = 2048
-pred_hidden = 512
-pred_out = 2048
-encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
-predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-model = SimSiam(encoder, predictor,augment_fn=transform,augment_fn2=transform_prime)
-model.to(device) #automatically detects from model
+    # Optimizer and Scheduler
+    # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
+    init_lr = args.lr #*batch_size/256
+    optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=0.9, weight_decay= 5e-4)
+    # #TODO:double check this Scheduler values
+    # scheduler = LinearWarmupCosineAnnealingLR(
+    #                         optimizer,
+    #                         warmup_epochs=10,
+    #                         max_epochs=epochs,
+    #                         warmup_start_lr=args.warmup_start_lr,
+    #                         eta_min=2e-4,
+    #                     )
+    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
+    wandb.init(project="SSL Project", name="SimSiam"
+                + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
 
-# Optimizer and Scheduler
-# SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
-init_lr = lr #*batch_size/256
-optimizer = torch.optim.SGD(model.parameters(), init_lr, momentum=0.9, weight_decay= 5e-4)
-# #TODO:double check this Scheduler values
-# scheduler = LinearWarmupCosineAnnealingLR(
-#                         optimizer,
-#                         warmup_epochs=10,
-#                         max_epochs=epochs,
-#                         warmup_start_lr=args.warmup_start_lr,
-#                         eta_min=2e-4,
-#                     )
-scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, epoch) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
-wandb.init(project="SSL Project", name="SimSiam"
-            + "-e" + str(epoch) + "-b" + str(batch_size) + "-lr" + str(init_lr))
+    #Training Loop 
+    loss_ = []
+    for epoch_counter in range(epoch):
+        model.train()
+        epoch_loss = []
+        for x1, x2, y in train_data_loaders[0]:
+            #x = x.to(device)
+            loss = model(x1, x2)
 
-#Training Loop 
-loss_ = []
-for epoch_counter in range(epoch):
-    model.train()
-    epoch_loss = []
-    for x, y in train_data_loaders[0]:
-        #x = x.to(device)
-        loss = model(x)
-        epoch_loss.append(loss.item())
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step() 
+            epoch_loss.append(loss.item())
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step() 
+            break
 
-    #TODO: do HP with linear warmup scheduler as well
-    scheduler.step()
+        #TODO: do HP with linear warmup scheduler as well
+        scheduler.step()
 
-    # adjust_learning_rate(optimizer, lr, epoch_counter, epoch)       
-    print(np.mean(epoch_loss))
-    loss_.append(np.mean(epoch_loss))
-    #TODO: knn predict
-    knn_acc = Knn_Validation(model,train_data_loaders[0],test_data_loaders[0],device=device, K=200,sigma=0.5) 
-    wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
-    wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
-    wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
-
-
-classifier =    LinClassifier().to(device)
-lin_epoch = 100
-lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
-lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
-test_loss, test_acc1, test_acc5 = linear_evaluation(model, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, lin_scheduler, epochs= lin_epoch)
+        # adjust_learning_rate(optimizer, lr, epoch_counter, epoch)       
+        print(np.mean(epoch_loss))
+        loss_.append(np.mean(epoch_loss))
+        #TODO: knn predict
+        knn_acc = Knn_Validation(model, train_data_loaders_knn[0],test_data_loaders[0],device=device, K=200,sigma=0.5) 
+        wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})
+        wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})  
+        wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
 
-# save your encoder network
-save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': 'resnet18',
-                'lr':init_lr,
-                'state_dict': model.state_dict(),
-                'optimizer' : optimizer.state_dict(),
-                'loss_':loss_,
-            }, is_best=False, filename='checkpoint_{:04f}.pth.tar'.format(lr))
+    classifier =    LinClassifier().to(device)
+    lin_epoch = 100
+    lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
+    lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
+    test_loss, test_acc1, test_acc5 = linear_evaluation(model, train_data_loaders[0],test_data_loaders[0],lin_optimizer,classifier, lin_scheduler, epochs= lin_epoch)
+
+
+    # save your encoder network
+    save_checkpoint({
+                    'epoch': epoch + 1,
+                    'arch': 'resnet18',
+                    'lr':init_lr,
+                    'state_dict': model.state_dict(),
+                    'optimizer' : optimizer.state_dict(),
+                    'loss_':loss_,
+                }, is_best=False, filename='checkpoint_{:04f}.pth.tar'.format(lr))
 
 
 

@@ -64,10 +64,10 @@ class SimSiam(nn.Module):
         self.augment1 = augment_fn
         self.augment2 = augment_fn2
         
-    def forward(self, x):
+    def forward(self, x1, x2=None):
         device = next(self.parameters()).device
         if self.training:
-            x1, x2 = self.augment1(x), self.augment2(x)
+            # x1, x2 = self.augment1(x), self.augment2(x)
             x1, x2 = x1.to(device), x2.to(device)
             z1 = self.encoder(x1) # NxC
             z2 = self.encoder(x2) # NxC
@@ -81,7 +81,7 @@ class SimSiam(nn.Module):
             loss = loss_one + loss_two
             return loss.mean()
         else:
-            out = self.encoder.backbone(x)
+            out = self.encoder.backbone(x1)
             out = out.squeeze()
             return out
         

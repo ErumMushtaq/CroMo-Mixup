@@ -25,8 +25,9 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
     total = 0
     
     with torch.no_grad():
+        
         for batch_idx, (inputs, t_label) in enumerate(train_data_loader):
-            inputs = transform(inputs) # normalize
+            # inputs = transform(inputs) # normalize
             inputs = inputs.to(device)
             batch_size = inputs.size(0)
 
@@ -50,7 +51,7 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
         for batch_idx, (inputs, targets) in enumerate(validation_data_loader):
             targets = targets.cuda(non_blocking=True)
             batch_size = inputs.size(0)
-            inputs = transform(inputs)
+            # inputs = transform(inputs)
             features = encoder(inputs.to(device))
 
             dist = torch.mm(features, train_features)

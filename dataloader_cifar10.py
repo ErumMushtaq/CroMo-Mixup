@@ -5,6 +5,7 @@ import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
+from cifar10_dataset import SimSiam_Dataloader
 
 
 def get_cifar10(classes=[5,5],valid_rate = 0.05, seed = 0,batch_size = 128):
@@ -48,6 +49,7 @@ def get_cifar10(classes=[5,5],valid_rate = 0.05, seed = 0,batch_size = 128):
     train_data_loaders = []
     test_data_loaders = []
     validation_data_loaders = []
+    train_data_loaders_knn = []
     for k in range(len(classes)):
         xtrain=data[k]['train']['x']
         ytrain=data[k]['train']['y']
@@ -56,8 +58,14 @@ def get_cifar10(classes=[5,5],valid_rate = 0.05, seed = 0,batch_size = 128):
         xtest = data[k]['test']['x']
         ytest = data[k]['test']['y']
 
-        train_data_loaders.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True))
+        train_dataset = SimSiam_Dataloader(xtrain, ytrain, is_knn=0)
+        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True))
+
+        train_dataset_knn = SimSiam_Dataloader(xtrain, ytrain, is_knn=1)
+        train_data_loaders_knn.append(DataLoader(train_dataset_knn, batch_size=batch_size, shuffle=True))
+        # train_data_loaders.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True))
         test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False))
         validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False))
 
-    return train_data_loaders, test_data_loaders, validation_data_loaders
+
+    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders
