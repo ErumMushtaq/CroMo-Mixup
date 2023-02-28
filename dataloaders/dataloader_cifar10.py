@@ -5,10 +5,10 @@ import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
-from cifar10_dataset import SimSiam_Dataloader
+from dataloaders.cifar10_dataset import SimSiam_Dataset
 
 
-def get_cifar10(classes=[5,5],valid_rate = 0.05, seed = 0,batch_size = 128):
+def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128):
     pc_valid= valid_rate
     dat = {}
     dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
@@ -58,14 +58,12 @@ def get_cifar10(classes=[5,5],valid_rate = 0.05, seed = 0,batch_size = 128):
         xtest = data[k]['test']['x']
         ytest = data[k]['test']['y']
 
-        train_dataset = SimSiam_Dataloader(xtrain, ytrain, is_knn=0)
-        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True))
+        train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+        # train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = 8, prefetch_factor = 8, pin_memory=True, persistent_workers=True))
+        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = 8, pin_memory=True))
 
-        train_dataset_knn = SimSiam_Dataloader(xtrain, ytrain, is_knn=1)
-        train_data_loaders_knn.append(DataLoader(train_dataset_knn, batch_size=batch_size, shuffle=True))
-        # train_data_loaders.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True))
-        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False))
-        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False))
-
+        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = 8, pin_memory=True))
+        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
+        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False, num_workers = 8))
 
     return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders

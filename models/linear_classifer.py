@@ -1,6 +1,6 @@
 from torch import nn
 
-class LinClassifier(nn.Module):
+class LinearClassifier(nn.Module):
     """
     Linear Evaluation with a linear classifier defined as 1-layer:
         input size: feature dimension (Ex: 512 for ResNet18 )

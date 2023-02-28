@@ -7,7 +7,7 @@
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-from resnet import resnetc18
+from models.resnet import resnetc18
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
@@ -67,7 +67,6 @@ class SimSiam(nn.Module):
     def forward(self, x1, x2=None):
         device = next(self.parameters()).device
         if self.training:
-            # x1, x2 = self.augment1(x), self.augment2(x)
             x1, x2 = x1.to(device), x2.to(device)
             z1 = self.encoder(x1) # NxC
             z2 = self.encoder(x2) # NxC
