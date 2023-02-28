@@ -35,8 +35,8 @@ def add_args(parser):
     parser.add_argument('--pretrain_base_lr', type=float, default=0.06)
     parser.add_argument('--pretrain_momentum', type=float, default=0.9)
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
-    parser.add_argument('--init_pretrain_epoch', type=int, default=1)
-    parser.add_argument('--final_pretrain_epoch', type=int, default=2)#800
+
+    parser.add_argument('--epochs', type=int, default=800)
     parser.add_argument('--knn_report_freq', type=int, default=10)
 
     parser.add_argument('--cuda_device', type=int, default=0, metavar='N',
@@ -58,7 +58,7 @@ if __name__ == "__main__":
     wandb.init(project="SSL Project", 
                 mode="disabled",
                 config=args,
-                name="SimSiam" + "-e" + str(args.final_pretrain_epoch) + "-b" 
+                name="SimSiam" + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr))
 
     #augmentations
@@ -106,7 +106,7 @@ if __name__ == "__main__":
 
     # save your encoder network
     save_checkpoint({
-                    'epoch': args.final_pretrain_epoch + 1,
+                    'epoch': args.epochs + 1,
                     'arch': 'resnet18',
                     'lr': args.pretrain_base_lr,
                     'state_dict': model.state_dict(),
