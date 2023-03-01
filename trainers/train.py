@@ -11,7 +11,7 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
     # Optimizer and Scheduler
     # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
     init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
-    optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=0.9, weight_decay= 5e-4)
+    optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
     
     # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=10, max_epochs=epochs,
     #                                             warmup_start_lr=args.warmup_start_lr, eta_min=2e-4)
@@ -21,24 +21,30 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
     #                              constant_predictor_lr=True)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
 
-    #Training Loop 
+    #Training Loop for x1, x2, y in train_data_loaders[0]:
     loss_ = []
     for epoch in range(args.epochs):
         start = time.time()
         model.train()
         epoch_loss = []
-        for x1, x2, y in train_data_loaders[0]:
-            loss = model(x1, x2)
-            epoch_loss.append(loss.item())
-            optimizer.zero_grad()
-            loss.backward()
-            optimizer.step() 
-
+        iteration = 0
+        # print(len(train_data_loaders[0]))
+        for i in range(len(train_data_loaders[0])): #10:for uniform dataloaders settings [5:5], [1:1,..,1]
+            for data in zip(*train_data_loaders):
+                for x1, x2, y in data:   
+                    loss = model(x1, x2)
+                    epoch_loss.append(loss.item())
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step() 
+                    iteration += 1
+                    break
+                # print(iteration)
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
         end = time.time()
         if (epoch+1) % args.knn_report_freq == 0:
-            knn_acc = Knn_Validation(model, train_data_loaders_knn[0],test_data_loaders[0], device=device, K=200,sigma=0.5) 
+            knn_acc = Knn_Validation(model, train_data_loaders_knn,test_data_loaders, device=device, K=200, sigma=0.5) 
             wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch})
             print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
         else:
