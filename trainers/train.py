@@ -29,16 +29,14 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
         epoch_loss = []
         iteration = 0
         # print(len(train_data_loaders[0]))
-        for i in range(len(train_data_loaders[0])): #10:for uniform dataloaders settings [5:5], [1:1,..,1]
-            for data in zip(*train_data_loaders):
-                for x1, x2, y in data:   
-                    loss = model(x1, x2)
-                    epoch_loss.append(loss.item())
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step() 
-                    iteration += 1
-                    break
+        for data in zip(*train_data_loaders):
+            for x1, x2, y in data:   
+                loss = model(x1, x2)
+                epoch_loss.append(loss.item())
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step() 
+                iteration += 1
                 # print(iteration)
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
