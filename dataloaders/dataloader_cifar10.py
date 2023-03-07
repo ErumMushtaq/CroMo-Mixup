@@ -8,7 +8,7 @@ from sklearn.utils import shuffle
 from dataloaders.cifar10_dataset import SimSiam_Dataset
 
 
-def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128):
+def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
     pc_valid= valid_rate
     dat = {}
     dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
@@ -60,9 +60,9 @@ def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, se
 
         train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
         # train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = 8, prefetch_factor = 8, pin_memory=True, persistent_workers=True))
-        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = 8, pin_memory=True))
+        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True))
 
-        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = 8, pin_memory=True))
+        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
         validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False, num_workers = 8))
 

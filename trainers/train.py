@@ -6,7 +6,7 @@ import numpy as np
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation
 
-def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, device, args):
+def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, class_split_knntrain_data_loader, class_split_test_data_loader, device, args):
 
     # Optimizer and Scheduler
     # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
@@ -28,7 +28,6 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
         model.train()
         epoch_loss = []
         iteration = 0
-        # print(len(train_data_loaders[0]))
         for data in zip(*train_data_loaders):
             for x1, x2, y in data:   
                 loss = model(x1, x2)
@@ -37,13 +36,19 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
                 loss.backward()
                 optimizer.step() 
                 iteration += 1
-                # print(iteration)
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
         end = time.time()
         if (epoch+1) % args.knn_report_freq == 0:
-            knn_acc = Knn_Validation(model, train_data_loaders_knn,test_data_loaders, device=device, K=200, sigma=0.5) 
-            wandb.log({" Knn Accuracy ": knn_acc, " Epoch ": epoch})
+            class_split_test_data_loader
+            knn_acc = Knn_Validation(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
+            wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch})
+            if len(class_split_test_data_loader) > 1: 
+                for i in range(len(class_split_test_data_loader)):
+                    knn_acc_class = Knn_Validation(model, class_split_knntrain_data_loader[i], class_split_test_data_loader[i], device=device, K=200, sigma=0.5)
+                    wandb.log({" Knn Accuracy Class-"+str(i): knn_acc_class, " Epoch ": epoch})
+                    
+
             print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
         else:
             print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')

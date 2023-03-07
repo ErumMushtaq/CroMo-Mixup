@@ -6,7 +6,11 @@ import torchvision.transforms as transforms
 from torch import nn
 from torch.nn import functional as F
 import wandb
-
+import numpy as np
+from sklearn.manifold import TSNE
+import seaborn as sns
+import matplotlib.pyplot as plt
+import pandas as pd
 
 def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 200,sigma = 0.1):#sigma is for
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
@@ -19,13 +23,11 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
     """Extract features from validation split and search on train split features."""
     encoder.eval()
     encoder.to(device)
-    torch.cuda.empty_cache()
+    # torch.cuda.empty_cache() #https://discuss.pytorch.org/t/what-is-torch-cuda-empty-cache-do-and-where-should-i-add-it/40975
     train_features = []
     train_labels = []
     total = 0
-    
-    with torch.no_grad():
-        
+    with torch.no_grad():       
         for batch_idx, (inputs, t_label) in enumerate(train_data_loader):
             inputs = transform(inputs) # normalize
             inputs = inputs.to(device)
@@ -35,7 +37,7 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
             features = encoder(inputs)
             features = nn.functional.normalize(features)
             train_features.append(features.data.t())
-            train_labels.append(t_label.cuda())
+            train_labels.append(t_label.to(device))
             total += batch_size
 
         #train_labels = torch.LongTensor(train_data_loader.dataset.tensors[1]).cuda()
@@ -47,9 +49,10 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
     C = train_labels.max() + 1
     top1 = 0
     with torch.no_grad():
-        retrieval_one_hot = torch.zeros(K, C).cuda()
+        retrieval_one_hot = torch.zeros(K, C).to(device)
         for batch_idx, (inputs, targets) in enumerate(validation_data_loader):
-            targets = targets.cuda(non_blocking=True)
+            targets = targets.to(device)
+            # targets = targets.to(device)(non_blocking=True)
             batch_size = inputs.size(0)
             inputs = transform(inputs)
             features = encoder(inputs.to(device))
@@ -94,7 +97,7 @@ def correct_top_k(outputs, targets, top_k=(1,5)):
             result.append(correct_k)
         return result
 
-def linear_test(net, data_loader, classifier, epoch):
+def linear_test(net, data_loader, classifier, epoch, device):
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
     random_crop_size = 32
@@ -111,7 +114,7 @@ def linear_test(net, data_loader, classifier, epoch):
     total_loss, total_correct_1, total_correct_5, total_num, test_bar = 0.0, 0.0, 0.0, 0, tqdm(data_loader)
     with torch.no_grad():
         for data_tuple in test_bar:
-            data, target = [t.cuda() for t in data_tuple]
+            data, target = [t.to(device) for t in data_tuple]
             data = transform(data)
 
             # Forward prop of the model with single augmented batch
@@ -147,7 +150,7 @@ def linear_test(net, data_loader, classifier, epoch):
 
 
 
-def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch):
+def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch, device):
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
     random_crop_size = 32
@@ -165,7 +168,7 @@ def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch
     for data_tuple in train_bar:
         # Forward prop of the model with single augmented batch
         pos_1, target = data_tuple
-        pos_1 = pos_1.cuda()
+        pos_1 = pos_1.to(device)
         pos_1 = transform(pos_1)
         feature_1 = net(pos_1)
         # feature_1 = net.get_representation(pos_1) 
@@ -173,7 +176,7 @@ def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch
         # Batchsize
         batchsize_bc = feature_1.shape[0]
         features = feature_1
-        targets = target.cuda()
+        targets = target.to(device)
 
 
         # Classifier with detach(for stop gradient to model)
@@ -211,11 +214,77 @@ def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch
     return linear_loss/total_num, acc_1, acc_5
 
 
-def linear_evaluation(net, data_loader,test_data_loader,train_optimizer,classifier, scheduler, epochs):
+def linear_evaluation(net, data_loader,test_data_loader,train_optimizer,classifier, scheduler, epochs, device):
     for epoch in range(1, epochs+1):
-        linear_loss, linear_acc1, linear_acc5 = linear_train(net,data_loader,train_optimizer,classifier,scheduler, epoch)
+        linear_loss, linear_acc1, linear_acc5 = linear_train(net,data_loader,train_optimizer,classifier,scheduler, epoch, device)
         with torch.no_grad():
             # Testing for linear evaluation
-            test_loss, test_acc1, test_acc5 = linear_test(net, test_data_loader, classifier, epoch)
+            test_loss, test_acc1, test_acc5 = linear_test(net, test_data_loader, classifier, epoch, device)
 
-    return test_loss, test_acc1, test_acc5
+    return test_loss, test_acc1, test_acc5, classifier
+
+
+def gen_features(test_data_loader, net, classifier, device):
+    net.eval()
+    targets_list = []
+    outputs_list = []
+
+    #TODO: check if transform needed here?
+
+    with torch.no_grad():
+        for idx, (inputs, targets) in enumerate(test_data_loader):
+            inputs = inputs.to(device)
+            targets = targets.to(device)
+            targets_np = targets.data.cpu().numpy()
+
+            feature = net(inputs)
+
+            # Logits by classifier
+            outputs = classifier(feature) 
+            outputs_np = outputs.data.cpu().numpy()
+            
+            targets_list.append(targets_np[:, np.newaxis])
+            outputs_list.append(outputs_np)
+            
+            if ((idx+1) % 10 == 0) or (idx+1 == len(test_data_loader)):
+                print(idx+1, '/', len(test_data_loader))
+
+    targets = np.concatenate(targets_list, axis=0)
+    outputs = np.concatenate(outputs_list, axis=0).astype(np.float64)
+
+    return targets, outputs
+
+def tsne_plot(targets, outputs, log_message, class_count):
+    print('generating t-SNE plot...')
+    # tsne_output = bh_sne(outputs)
+    tsne = TSNE(random_state=0)
+    tsne_output = tsne.fit_transform(outputs)
+
+    df = pd.DataFrame(tsne_output, columns=['x', 'y'])
+    df['targets'] = targets
+
+    print(targets)
+    plt.figure()
+    plt.rcParams['figure.figsize'] = 10, 10
+    sns.scatterplot(
+        x='x', y='y',
+        hue='targets',
+        palette=sns.color_palette("hls", class_count), #10
+        data=df,
+        marker='o',
+        legend="full",
+        alpha=0.5
+    )
+
+    plt.xticks([])
+    plt.yticks([])
+    plt.xlabel('')
+    plt.ylabel('')
+
+    wandb.log({" t-SNE Plot "+log_message: [wandb.Image(plt)]})
+    print('done!')
+
+def get_t_SNE_plot(test_data_loader, encoder, classifier, device, log_message='global', class_count=10):
+    #Code ref: https://github.com/2-Chae/PyTorch-tSNE/blob/main/main.py
+    targets, outputs = gen_features(test_data_loader, encoder, classifier, device)
+    tsne_plot(targets, outputs, log_message=log_message, class_count=class_count)

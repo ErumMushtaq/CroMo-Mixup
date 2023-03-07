@@ -1,10 +1,10 @@
 ## Testing SimCLR for Class Incremental (CI) Scenario
 
-1. Added a basic code of simsiam from BYOL repository for resnet50 model + downstream task code.
-2. Go to CL_SSL_BYOL ad run the followig command
-    ```python3 main.py```
-3. TODO: @erum Matching the optimizers, and hyper-parameters (lr, batch sizes) from the original paper
-4. TODO: @erumcomplete the linear classiffier search
+1. To run SimSiam:
+```python3 main.py -cs [10] --cuda_device 0```
+2. To run post processing for t-SNE plots or correlation:
+```python3 post_processing.py --pretrained_dir './checkpoints/checkpoint_0.030000_cs_[5, 5]_bs_512.pth.tar' -cs 5,5``` 
+
 
 
 
