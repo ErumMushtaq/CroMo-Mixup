@@ -6,17 +6,31 @@ import numpy as np
 
 import torch
 import torchvision.transforms as T
+import torchvision
 
 from dataloaders.dataloader_cifar10 import get_cifar10
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
-from models.simsiam import Encoder, Predictor, SimSiam
+from models.simsiam import Encoder, Predictor, SimSiam, InfoMax
 from trainers.train import train
 from torchsummary import summary
-
+import random
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+
+
+
+class GaussianBlur(object):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=[0.1, 2.0]):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        x = torchvision.transforms.functional.gaussian_blur(x,kernel_size=[3,3],sigma=sigma)#kernel size and sigma are open problems but right now seems ok!
+        return x
 
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
@@ -44,6 +58,9 @@ def add_args(parser):
                         help='device id')
     parser.add_argument('--num_workers', type=int, default=1, metavar='N',
                         help='num of workers')
+
+    parser.add_argument('--algo', type=str, default='simsiam',
+                        help='ssl algorithm')
     parser.add_argument('-cs', '--class_split', help='delimited list input', 
     type=lambda s: [int(item) for item in s.split(',')])
 
@@ -70,22 +87,40 @@ if __name__ == "__main__":
                 # mode="disabled",
                 config=args,
                 name="SimSiam" + "-e" + str(args.epochs) + "-b" 
-                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
+                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo))
 
-    #augmentations
-    transform = T.Compose([
-            T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-            T.RandomHorizontalFlip(),
-            T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
-            T.RandomGrayscale(p=0.2),
-            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+    if args.algo == 'simsiam':
+        #augmentations
+        transform = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
-    transform_prime = T.Compose([
-            T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-            T.RandomHorizontalFlip(),
-            T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
-            T.RandomGrayscale(p=0.2),
-            T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+        transform_prime = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+    
+    if args.algo == 'infomax':
+        transform = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                T.RandomApply([GaussianBlur()], p=0.5), 
+                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+
+        transform_prime = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                T.RandomApply([GaussianBlur()], p=0.5), 
+                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
     #Dataloaders
     print("Creating Dataloaders..")
@@ -96,15 +131,23 @@ if __name__ == "__main__":
                                         classes=[10], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
-    print("Creating Model..")
-    proj_hidden = 2048
-    proj_out = 2048
-    pred_hidden = 512
-    pred_out = 2048
-    encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
-    predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-    model = SimSiam(encoder, predictor)
-    model.to(device) #automatically detects from model
+    if args.algo == 'simsiam':
+        print("Creating Model for Simsiam..")
+        proj_hidden = 2048
+        proj_out = 2048
+        pred_hidden = 512
+        pred_out = 2048
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+        predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
+        model = SimSiam(encoder, predictor)
+        model.to(device) #automatically detects from model
+    if args.algo == 'infomax':
+        proj_hidden = 2048
+        proj_out = 2048
+        pred_out = 64
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+        model = InfoMax(encoder, project_dim=proj_out,device=device)
+        model.to(device) #automatically detects from model
 
     #Training
     print("Starting Training..")

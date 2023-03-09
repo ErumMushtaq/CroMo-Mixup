@@ -7,7 +7,13 @@ from torchvision import datasets,transforms
 from sklearn.utils import shuffle
 from dataloaders.cifar10_dataset import SimSiam_Dataset
 
-
+def find_task(classes,label):
+    cur_label = 0
+    for i in range(len(classes)):
+        cur_label += classes[i]
+        if label < cur_label:
+            break
+    return i
 def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
     pc_valid= valid_rate
     dat = {}
@@ -20,19 +26,20 @@ def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, se
     for n, num_class in enumerate(classes):
         upper_bound += num_class
         data[n]={}
+        data[n]['train']={'x': [],'y': []}
+        data[n]['test']={'x': [],'y': []}
+    for s in ['train','test']:
+        loader=torch.utils.data.DataLoader(dat[s],batch_size=1,shuffle=False)
+        for image, target in loader:
+            n = find_task(classes,target.numpy()[0])
+            data[n][s]['x'].append(image)
+            data[n][s]['y'].append(target.numpy()[0])
+
+    for n in data.keys():
         for s in ['train','test']:
-            loader=torch.utils.data.DataLoader(dat[s],batch_size=1,shuffle=False)
-            data[n][s]={'x': [],'y': []}
-            for image, target in loader:
-                if target.numpy()[0] < upper_bound and target.numpy()[0] >= lower_bound:
-                    data[n][s]['x'].append(image)
-                    data[n][s]['y'].append(target.numpy()[0])
-    
-        for s in ['train','test']:
-                data[n][s]['x']=torch.stack(data[n][s]['x']).view(-1,size[0],size[1],size[2])
-                data[n][s]['y']=torch.LongTensor(np.array(data[n][s]['y'],dtype=int)).view(-1)
+            data[n][s]['x']=torch.stack(data[n][s]['x']).view(-1,size[0],size[1],size[2])
+            data[n][s]['y']=torch.LongTensor(np.array(data[n][s]['y'],dtype=int)).view(-1)
         
-        lower_bound = upper_bound
 
     for t in data.keys():
         r=np.arange(data[t]['train']['x'].size(0))

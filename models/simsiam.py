@@ -8,6 +8,7 @@ import torch
 from torch import nn, optim
 import torch.nn.functional as F
 from models.resnet import resnetc18
+from infomax_loss import invariance_loss,CovarianceLoss
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
@@ -79,6 +80,33 @@ class SimSiam(nn.Module):
 
             loss = 0.5*loss_one + 0.5*loss_two
             return loss.mean()
+        else:
+            out = self.encoder.backbone(x1)
+            out = out.squeeze()
+            return out
+
+
+class InfoMax(nn.Module):
+    def __init__(self, encoder, project_dim =64, sim_loss_weight=500.0,cov_loss_weight = 1.0 
+    , augment_fn = None,augment_fn2 = None,device='cpu'):
+        super().__init__()
+        self.encoder = encoder
+        self.augment1 = augment_fn
+        self.augment2 = augment_fn2
+        self.cov_loss = CovarianceLoss(project_dim,device=device)
+        self.sim_loss_weight = sim_loss_weight
+        self.cov_loss_weight = cov_loss_weight 
+        
+    def forward(self, x1, x2=None):
+        device = next(self.parameters()).device
+        if self.training:
+            x1, x2 = x1.to(device), x2.to(device)
+            z1 = self.encoder(x1) # NxC
+            z2 = self.encoder(x2) # NxC
+            cov_loss =  self.cov_loss(z1, z2)
+            sim_loss =  invariance_loss(z1, z2) 
+            loss = (self.sim_loss_weight * sim_loss) + (self.cov_loss_weight * cov_loss)
+            return loss
         else:
             out = self.encoder.backbone(x1)
             out = out.squeeze()

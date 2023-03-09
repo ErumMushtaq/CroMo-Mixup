@@ -1,0 +1,1 @@
+python main.py -cs 10 --algo infomax --pretrain_base_lr 0.5 
