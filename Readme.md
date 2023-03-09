@@ -8,7 +8,7 @@
 ## Command to Run Continual SSL:
 ```$ python3 main_cont.py -cs 5,5 -e 500,500 --cuda_device 0```
 
-```cs``` corresponds to class split, ```e``` is for the number of epochs for the corresponding task
+```cs``` corresponds to class split, ```e``` is for the number of epochs for the corresponding task (length of cs and e should be the same)
 
 
 ## Experiments Discused in previous meeting:
