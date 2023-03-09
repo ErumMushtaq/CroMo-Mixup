@@ -19,3 +19,4 @@
     d) Hard (one class based increments)
 
 3. May be (include one type of class in one batch and compare to 1)
+4. We need to tune Linear Classifier, it seems like not performing optimal
