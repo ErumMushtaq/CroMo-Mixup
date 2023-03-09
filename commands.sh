@@ -1,1 +1,1 @@
-python main.py -cs 10 --algo infomax --pretrain_base_lr 0.5 
+python main.py -cs 10 --epochs 1000 --pretrain_batch_size 256 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --algo infomax --pretrain_base_lr 0.5 

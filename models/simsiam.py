@@ -87,7 +87,7 @@ class SimSiam(nn.Module):
 
 
 class InfoMax(nn.Module):
-    def __init__(self, encoder, project_dim =64, sim_loss_weight=500.0,cov_loss_weight = 1.0 
+    def __init__(self, encoder, project_dim =64, sim_loss_weight=250.0,cov_loss_weight = 1.0 
     , augment_fn = None,augment_fn2 = None,device='cpu'):
         super().__init__()
         self.encoder = encoder
@@ -103,6 +103,8 @@ class InfoMax(nn.Module):
             x1, x2 = x1.to(device), x2.to(device)
             z1 = self.encoder(x1) # NxC
             z2 = self.encoder(x2) # NxC
+            z1 = F.normalize(z1, p=2)
+            z2 = F.normalize(z2, p=2)
             cov_loss =  self.cov_loss(z1, z2)
             sim_loss =  invariance_loss(z1, z2) 
             loss = (self.sim_loss_weight * sim_loss) + (self.cov_loss_weight * cov_loss)

@@ -12,7 +12,7 @@ from dataloaders.dataloader_cifar10 import get_cifar10
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
 from models.simsiam import Encoder, Predictor, SimSiam, InfoMax
-from trainers.train import train
+from trainers.train_cont import train
 from torchsummary import summary
 import random
 
@@ -48,22 +48,17 @@ def add_args(parser):
     parser.add_argument('--pretrain_warmup_epochs', type=int, default=0)
     parser.add_argument('--pretrain_warmup_lr', type=float, default=0)
     parser.add_argument('--pretrain_base_lr', type=float, default=0.03)
-    parser.add_argument('--min_lr', type=float, default=0.00)
     parser.add_argument('--pretrain_momentum', type=float, default=0.9)
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
 
-    parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--knn_report_freq', type=int, default=10)
-
-    parser.add_argument('--cuda_device', type=int, default=0, metavar='N',
-                        help='device id')
+    parser.add_argument('--cuda_device', type=int, default=0, metavar='N', help='device id')
     parser.add_argument('--num_workers', type=int, default=1, metavar='N',
                         help='num of workers')
 
-    parser.add_argument('--algo', type=str, default='simsiam',
-                        help='ssl algorithm')
-    parser.add_argument('-cs', '--class_split', help='delimited list input', 
-    type=lambda s: [int(item) for item in s.split(',')])
+    parser.add_argument('--algo', type=str, default='simsiam', help='ssl algorithm')
+    parser.add_argument('-cs', '--class_split', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
+    parser.add_argument('-e', '--epochs', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
 
     args = parser.parse_args()
     return args
@@ -75,6 +70,8 @@ if __name__ == "__main__":
     args = add_args(parser)
 
     assert sum(args.class_split) == 10
+    assert len(args.class_split) == len(args.epochs)
+    
     num_worker = int(8/len(args.class_split))
     if len(args.class_split) == 10:
         num_worker = 2
@@ -126,9 +123,9 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
     #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders = get_cifar10(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _ = get_cifar10(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
-    train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
+    _, train_data_loaders_knn_all, test_data_loaders_all, _ = get_cifar10(transform, transform_prime, \
                                         classes=[10], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
@@ -152,7 +149,7 @@ if __name__ == "__main__":
 
     #Training
     print("Starting Training..")
-    model, loss, optimizer = train(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+    model, loss, optimizer = train(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
@@ -160,7 +157,9 @@ if __name__ == "__main__":
     classifier = LinearClassifier().to(device)
     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
-    test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_knn_all[0],test_data_loaders_all[0],lin_optimizer, classifier, lin_scheduler, epochs=lin_epoch, device=device) 
+    test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_knn_all[0],
+                                                                    test_data_loaders_all[0],lin_optimizer, classifier, 
+                                                                    lin_scheduler, epochs=lin_epoch, device=device) 
 
     #T-SNE Plot
     print("Starting T-SNE Plot..")

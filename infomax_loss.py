@@ -22,7 +22,7 @@ class CovarianceLoss(nn.Module):
         la_R = 0.01
         la_mu = 0.01
         R_ini = 1.0
-        R_eps_weight = 1e-6
+        R_eps_weight = 1e-8
         self.R1 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64, requires_grad=False).to(device)
         self.mu1 = torch.zeros(proj_output_dim, dtype=torch.float64, requires_grad=False).to(device)
         self.R2 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64,  requires_grad=False).to(device)

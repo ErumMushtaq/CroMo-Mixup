@@ -12,6 +12,96 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 import pandas as pd
 
+def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None, K = 200,sigma = 0.1):#sigma is for
+    data_normalize_mean = (0.4914, 0.4822, 0.4465)
+    data_normalize_std = (0.247, 0.243, 0.261)
+    random_crop_size = 32
+    transform = transforms.Compose(
+            [   
+                transforms.Normalize(data_normalize_mean, data_normalize_std),
+            ])
+    """Extract features from validation split and search on train split features."""
+    encoder.eval()
+    encoder.to(device)
+    # torch.cuda.empty_cache() #https://discuss.pytorch.org/t/what-is-torch-cuda-empty-cache-do-and-where-should-i-add-it/40975
+    train_features_all = []
+    train_labels_all = []
+    with torch.no_grad():       
+        for loader in train_data_loaders:
+            train_features = []
+            train_labels = []
+            for batch_idx, (inputs, t_label) in enumerate(loader):
+                inputs = transform(inputs) # normalize
+                inputs = inputs.to(device)
+                batch_size = inputs.size(0)
+
+                # forward
+                features = encoder(inputs)
+                features = nn.functional.normalize(features)
+                train_features.append(features.data.t())
+                train_labels.append(t_label.to(device))
+
+            #train_labels = torch.LongTensor(train_data_loader.dataset.tensors[1]).cuda()
+            train_features = torch.cat(train_features,dim = 1)
+            train_labels = torch.cat(train_labels)
+            train_features_all.append(train_features)
+            train_labels_all.append(train_labels)
+
+    total = 0
+    correct = 0
+    C = train_labels_all[-1].max() + 1
+    top1 = 0
+    task_acc=[]
+    with torch.no_grad():
+        retrieval_one_hot = torch.zeros(K, C).to(device)
+        for task_id, loader in enumerate(test_data_loaders):
+            tot = 0
+            corr=0
+            t1 = 0
+            for _, (inputs, targets) in enumerate(loader):
+                targets = targets.to(device)
+                batch_size = inputs.size(0)
+                inputs = transform(inputs)
+                features = encoder(inputs.to(device))
+
+                #Task-wise result
+                dist = torch.mm(features, train_features_all[task_id])
+                yd, yi = dist.topk(K, dim=1, largest=True, sorted=True)
+                
+                candidates = train_labels_all[task_id].view(1, -1).expand(batch_size, -1)
+                retrieval = torch.gather(candidates, 1, yi)
+
+                retrieval_one_hot.resize_(batch_size * K, C).zero_()
+                retrieval_one_hot.scatter_(1, retrieval.view(-1, 1), 1)
+                yd_transform = yd.clone().div_(sigma).exp_()
+                probs = torch.sum(torch.mul(retrieval_one_hot.view(batch_size, -1 , C), yd_transform.view(batch_size, -1, 1)), 1)
+                _, predictions = probs.sort(1, True)
+            
+                total += targets.size(0)
+                correct = predictions.eq(targets.data.view(-1,1))
+                top1 = top1 + correct.narrow(1,0,1).sum().item()
+
+                #All-Task result
+                dist = torch.mm(features, torch.cat(train_features_all,dim = 1))
+                yd, yi = dist.topk(K, dim=1, largest=True, sorted=True)
+                
+                candidates = torch.cat(train_labels_all).view(1, -1).expand(batch_size, -1)
+                retrieval = torch.gather(candidates, 1, yi)
+
+                retrieval_one_hot.resize_(batch_size * K, C).zero_()
+                retrieval_one_hot.scatter_(1, retrieval.view(-1, 1), 1)
+                yd_transform = yd.clone().div_(sigma).exp_()
+                probs = torch.sum(torch.mul(retrieval_one_hot.view(batch_size, -1 , C), yd_transform.view(batch_size, -1, 1)), 1)
+                _, predictions = probs.sort(1, True)
+            
+                tot += targets.size(0)
+                corr = predictions.eq(targets.data.view(-1,1))
+                t1 = t1 + corr.narrow(1,0,1).sum().item()
+            task_acc.append(t1/tot)   
+    top1 = top1 / total
+
+    return top1, task_acc
+
 def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 200,sigma = 0.1):#sigma is for
     data_normalize_mean = (0.4914, 0.4822, 0.4465)
     data_normalize_std = (0.247, 0.243, 0.261)
