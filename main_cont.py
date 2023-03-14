@@ -11,8 +11,10 @@ import torchvision
 from dataloaders.dataloader_cifar10 import get_cifar10
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
+from models.PFR import Encoder, Predictor, SimSiam_PFR, InfoMax
 from models.simsiam import Encoder, Predictor, SimSiam, InfoMax
 from trainers.train_cont import train
+from trainers.train_PFR import train_PFR
 from torchsummary import summary
 import random
 
@@ -50,6 +52,8 @@ def add_args(parser):
     parser.add_argument('--pretrain_base_lr', type=float, default=0.03)
     parser.add_argument('--pretrain_momentum', type=float, default=0.9)
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
+    parser.add_argument('--lambdap', type=float, default=2)
+    parser.add_argument('--appr', type=str, default='basic', help='Approach name, basic, PFR') #approach
 
     parser.add_argument('--knn_report_freq', type=int, default=10)
     parser.add_argument('--cuda_device', type=int, default=0, metavar='N', help='device id')
@@ -85,7 +89,7 @@ if __name__ == "__main__":
                 # mode="disabled",
                 config=args,
                 name="SimSiam" + "-e" + str(args.epochs) + "-b" 
-                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo))
+                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-appr' + str(args.appr))
 
     if args.algo == 'simsiam':
         #augmentations
@@ -137,7 +141,22 @@ if __name__ == "__main__":
         pred_out = 2048
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-        model = SimSiam(encoder, predictor)
+        if args.appr == 'basic': #baseline setup
+            model = SimSiam(encoder, predictor)
+        else: 
+            # ref for debugging the parameters: https://github.com/alviur/CVPR_PFR/blob/111f57d479055238b2e953d7311c9c2b6bc0439d/src/approach/simsiamTinyPara.py#L1318 
+            # proj_hidden = 512
+            # proj_out = 512
+            # pred_hidden = 256
+            # pred_out = 512
+            proj_hidden = 2048
+            proj_out = 2048
+            pred_hidden = 512
+            pred_out = 2048
+            encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+            predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
+            print('PFR model')
+            model = SimSiam_PFR(encoder, predictor)
         model.to(device) #automatically detects from model
     if args.algo == 'infomax':
         proj_hidden = 2048
@@ -149,7 +168,12 @@ if __name__ == "__main__":
 
     #Training
     print("Starting Training..")
-    model, loss, optimizer = train(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    if args.appr == 'basic': #baseline setup
+        model, loss, optimizer = train(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR': #CVPR paper
+        model, loss, optimizer = train_PFR(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    else:
+        raise Exception('Approach does not exist in this repo')
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
