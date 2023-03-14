@@ -109,18 +109,18 @@ if __name__ == "__main__":
     if args.algo == 'infomax':
         transform = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-                T.RandomHorizontalFlip(),
+                T.RandomHorizontalFlip(p=0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=1.0), 
                 T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
         transform_prime = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-                T.RandomHorizontalFlip(),
+                T.RandomHorizontalFlip(p=0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=0.0), 
                 T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
 
     #Dataloaders
@@ -144,8 +144,7 @@ if __name__ == "__main__":
         model.to(device) #automatically detects from model
     if args.algo == 'infomax':
         proj_hidden = 2048
-        proj_out = 2048
-        pred_out = 64
+        proj_out = 64
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
         model = InfoMax(encoder, project_dim=proj_out,device=device)
         model.to(device) #automatically detects from model
