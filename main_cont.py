@@ -9,6 +9,7 @@ import torchvision.transforms as T
 import torchvision
 
 from dataloaders.dataloader_cifar10 import get_cifar10
+from dataloaders.dataloader_cifar100 import get_cifar100
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
 from models.PFR import Encoder, Predictor, SimSiam_PFR, InfoMax
@@ -60,6 +61,7 @@ def add_args(parser):
     parser.add_argument('--num_workers', type=int, default=1, metavar='N',
                         help='num of workers')
 
+    parser.add_argument('--dataset', type=str, default='cifar10', help='cifar10, cifar100')
     parser.add_argument('--algo', type=str, default='simsiam', help='ssl algorithm')
     parser.add_argument('-cs', '--class_split', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
     parser.add_argument('-e', '--epochs', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
@@ -73,7 +75,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     args = add_args(parser)
 
-    assert sum(args.class_split) == 10
+    if args.dataset == "cifar10":
+        get_dataloaders = get_cifar10
+        num_classes=10
+    elif args.dataset == "cifar100":
+        get_dataloaders = get_cifar100
+        num_classes=100
+    assert sum(args.class_split) == num_classes
     assert len(args.class_split) == len(args.epochs)
     
     num_worker = int(8/len(args.class_split))
@@ -86,7 +94,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="SSL Project", 
-                # mode="disabled",
+                mode="disabled",
                 config=args,
                 name="SimSiam" + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-appr' + str(args.appr))
@@ -127,10 +135,10 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
     #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _ = get_cifar10(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _ = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
-    _, train_data_loaders_knn_all, test_data_loaders_all, _ = get_cifar10(transform, transform_prime, \
-                                        classes=[10], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
+    _, train_data_loaders_knn_all, test_data_loaders_all, _ = get_dataloaders(transform, transform_prime, \
+                                        classes=[num_classes], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
     if args.algo == 'simsiam':

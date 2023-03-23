@@ -77,9 +77,9 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
                 probs = torch.sum(torch.mul(retrieval_one_hot.view(batch_size, -1 , C), yd_transform.view(batch_size, -1, 1)), 1)
                 _, predictions = probs.sort(1, True)
             
-                total += targets.size(0)
-                correct = predictions.eq(targets.data.view(-1,1))
-                top1 = top1 + correct.narrow(1,0,1).sum().item()
+                tot += targets.size(0)
+                corr = predictions.eq(targets.data.view(-1,1))
+                t1 = t1 + corr.narrow(1,0,1).sum().item()
 
                 #All-Task result
                 dist = torch.mm(features, torch.cat(train_features_all,dim = 1))
@@ -94,9 +94,9 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
                 probs = torch.sum(torch.mul(retrieval_one_hot.view(batch_size, -1 , C), yd_transform.view(batch_size, -1, 1)), 1)
                 _, predictions = probs.sort(1, True)
             
-                tot += targets.size(0)
-                corr = predictions.eq(targets.data.view(-1,1))
-                t1 = t1 + corr.narrow(1,0,1).sum().item()
+                total += targets.size(0)
+                correct = predictions.eq(targets.data.view(-1,1))
+                top1 = top1 + correct.narrow(1,0,1).sum().item()
             task_acc.append(t1/tot)   
     top1 = top1 / total
 
