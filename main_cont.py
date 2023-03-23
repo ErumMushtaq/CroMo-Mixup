@@ -93,8 +93,8 @@ if __name__ == "__main__":
     device = torch.device("cuda:" + str(args.cuda_device) if torch.cuda.is_available() else "cpu")
     print(device)
     #wandb init
-    wandb.init(project="SSL Project", 
-                mode="disabled",
+    wandb.init(project="CSSL",  entity="yavuz-team",
+                # mode="disabled",
                 config=args,
                 name="SimSiam" + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-appr' + str(args.appr))
