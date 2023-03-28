@@ -95,7 +95,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                mode="disabled",
+                #mode="disabled",
                 config=args,
                 name="SimSiam" + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-appr' + str(args.appr) + '-ratio' + str(args.ratio))
