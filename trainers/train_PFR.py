@@ -32,6 +32,7 @@ def train_PFR(model, train_data_loaders, knn_train_data_loaders, test_data_loade
             scheduler.step()
             loss_.append(np.mean(epoch_loss))
             end = time.time()
+            print('epoch end')
             if (epoch+1) % args.knn_report_freq == 0:
                 knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
                 wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
@@ -44,6 +45,7 @@ def train_PFR(model, train_data_loaders, knn_train_data_loaders, test_data_loade
         
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
+            
 
         # model.oldModel = deepcopy(model.encoder.backbone)  # save t-1 model
         model.oldModel.load_state_dict(model.encoder.backbone.state_dict())

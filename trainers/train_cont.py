@@ -24,7 +24,8 @@ def train(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, 
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
-                optimizer.step() 
+                optimizer.step()
+            print('epoch finished') 
             epoch_counter += 1
             scheduler.step()
             loss_.append(np.mean(epoch_loss))
