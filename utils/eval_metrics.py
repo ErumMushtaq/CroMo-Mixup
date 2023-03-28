@@ -330,8 +330,9 @@ def gen_features(test_data_loader, net, classifier, device):
             feature = net(inputs)
 
             # Logits by classifier
-            outputs = classifier(feature) 
-            outputs_np = outputs.data.cpu().numpy()
+            #outputs = classifier(feature) 
+            #outputs_np = outputs.data.cpu().numpy()
+            outputs_np = feature.cpu().numpy()
             
             targets_list.append(targets_np[:, np.newaxis])
             outputs_list.append(outputs_np)
