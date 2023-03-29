@@ -13,6 +13,7 @@ from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
 from models.simsiam import Encoder, Predictor, SimSiam, InfoMax
 from trainers.train import train
+from trainers.train_concat import train_concate
 from torchsummary import summary
 import random
 
@@ -62,6 +63,10 @@ def add_args(parser):
 
     parser.add_argument('--algo', type=str, default='simsiam',
                         help='ssl algorithm')
+
+    parser.add_argument('--exp_type', type=str, default='basic',
+                        help='concat, basic')
+
     parser.add_argument('-cs', '--class_split', help='delimited list input', 
     type=lambda s: [int(item) for item in s.split(',')])
 
@@ -151,7 +156,13 @@ if __name__ == "__main__":
 
     #Training
     print("Starting Training..")
-    model, loss, optimizer = train(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+    if args.exp_type == 'basic':
+        model, loss, optimizer = train(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+    else:
+        train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
+                                        classes=[10], valid_rate = 0.00, batch_size=10, seed = 0, num_worker= num_worker)
+        train_data_loaders.append(train_data_loaders_all[0])
+        model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
