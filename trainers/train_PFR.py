@@ -14,6 +14,9 @@ def train_PFR(model, train_data_loaders, knn_train_data_loaders, test_data_loade
         # Optimizer and Scheduler
         model.task_id = task_id
         init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
+        if task_id != 0:
+            init_lr = init_lr / 10
+            
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
 

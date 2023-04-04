@@ -5,7 +5,6 @@ import numpy as np
 
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
-from infomax_loss import invariance_loss,CovarianceLoss
 import torchvision.transforms as transforms
 from sklearn.cluster import KMeans
 import time
@@ -35,7 +34,7 @@ def get_mean_vectors(model, data_loader, device, n_centers=20):
     return centers
         
 
-def train_contrastive(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
+def train_PFR_contrastive(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
     epoch_counter = 0
     centers = None
     for task_id, loader in enumerate(train_data_loaders):
@@ -43,7 +42,6 @@ def train_contrastive(model, train_data_loaders, knn_train_data_loaders, test_da
         init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
         if task_id != 0:
             init_lr = init_lr / 10
-            model.cov_loss = CovarianceLoss(2048,device=device)
             
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id])
