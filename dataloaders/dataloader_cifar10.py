@@ -18,9 +18,6 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
     pc_valid= valid_rate
     dat = {}
     if transform == None:
-        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
-        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
-    else:
         transform_train = transforms.Compose([
             transforms.RandomCrop(32, padding=4),
             transforms.RandomHorizontalFlip(),
@@ -32,9 +29,13 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
             transforms.ToTensor(),
             transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
         ])
-        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose(transform_train))#normalization added
+        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transform_train)#normalization added
         # dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose(transform_test))#normalization removed
-        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose(transform_test))#normalization removed
+        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transform_test)#normalization removed
+    else:
+        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+
 
     data = {}
     lower_bound = 0
