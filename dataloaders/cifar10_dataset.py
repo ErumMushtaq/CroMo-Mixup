@@ -28,16 +28,18 @@ class Sup_Dataset(Dataset):
 
         self.train_data = xtrain
         self.label_data = ytrain
-        # self.transform = T.Compose(
-        # [T.ToTensor(),
-        # T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+        self.transform =  T.Compose([
+        T.RandomCrop(32, padding=4),
+        T.RandomHorizontalFlip(),
+        T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261]),
+    ])
 
     def __len__(self):
         return len(self.train_data)
 
     def __getitem__(self, idx):
         y = self.label_data[idx]
-        x1 = self.train_data[idx]
+        x1 = self.transform(self.train_data[idx])
         # x2 = self.transform_prime(self.train_data[idx])
         return x1, y
 

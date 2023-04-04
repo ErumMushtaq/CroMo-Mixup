@@ -15,10 +15,13 @@ from models.linear_classifer import LinearClassifier
 from models.PFR import Encoder, Predictor, SimSiam_PFR, InfoMax
 from models.simsiam import  SimSiam, InfoMax
 from models.contrastive_simsiam import SimSiamContrastive
+from models.PRF_contrastive_simsiam import SimSiam_PFR_contrastive
 from trainers.train_cont import train
 from trainers.train_PFR import train_PFR
+from trainers.train_PFR_contrastive import train_PFR_contrastive
 from trainers.train_COV import train_cov
 from trainers.train_contrastive import train_contrastive
+from trainers.train_ering import train_ering
 from torchsummary import summary
 import random
 
@@ -61,8 +64,7 @@ def add_args(parser):
 
     parser.add_argument('--knn_report_freq', type=int, default=10)
     parser.add_argument('--cuda_device', type=int, default=0, metavar='N', help='device id')
-    parser.add_argument('--num_workers', type=int, default=8, metavar='N',
-                        help='num of workers')
+    parser.add_argument('--num_workers', type=int, default=8, metavar='N', help='num of workers')
 
     parser.add_argument('--ratio', type=float, default=1.0)
     parser.add_argument('--dataset', type=str, default='cifar10', help='cifar10, cifar100')
@@ -70,6 +72,10 @@ def add_args(parser):
     parser.add_argument('-cs', '--class_split', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
     parser.add_argument('-e', '--epochs', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
 
+    #Ering parameters
+    parser.add_argument('--bsize', type=int, default=32, help='For Ering, number of samples that are sampled for each batch')
+    parser.add_argument('--msize', type=str, default=150, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
+    
     args = parser.parse_args()
     return args
 
@@ -150,9 +156,11 @@ if __name__ == "__main__":
         pred_out = 2048
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-        if args.appr == 'basic' or args.appr == 'cov': #baseline setup
+        if args.appr == 'basic' or args.appr == 'cov' or args.appr == 'ering': #baseline setup
             model = SimSiam(encoder, predictor)
         elif args.appr == 'contrastive':
+            model = SimSiamContrastive(encoder, predictor)
+        elif args.appr == 'PFR_contrastive':
             model = SimSiamContrastive(encoder, predictor)
         else: 
             # ref for debugging the parameters: https://github.com/alviur/CVPR_PFR/blob/111f57d479055238b2e953d7311c9c2b6bc0439d/src/approach/simsiamTinyPara.py#L1318 
@@ -186,7 +194,11 @@ if __name__ == "__main__":
     elif args.appr == 'cov': #Generate samples from mean and cov
         model, loss, optimizer = train_cov(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'contrastive': #contrastive loss between new and old task samples
-        model, loss, optimizer = train_contrastive(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)    
+        model, loss, optimizer = train_contrastive(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR_contrastive': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_PFR_contrastive(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)  
+    elif args.appr == 'ering': #ERING
+        model, loss, optimizer = train_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)            
     else:
         raise Exception('Approach does not exist in this repo')
 
@@ -215,7 +227,7 @@ if __name__ == "__main__":
                     'loss': loss,
                     'encoder': model.encoder.backbone.state_dict(),
                     'classifier': classifier.state_dict(),
-                }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.class_split, args.pretrain_batch_size))
+                }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_cs_{}_bs_{}_ratio_{}.pth.tar'.format(args.pretrain_base_lr, args.class_split, args.pretrain_batch_size, args.ratio))
 
 
 

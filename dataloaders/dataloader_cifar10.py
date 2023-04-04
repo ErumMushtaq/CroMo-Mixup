@@ -17,24 +17,9 @@ def find_task(classes,label):
 def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
     pc_valid= valid_rate
     dat = {}
-    if transform == None:
-        transform_train = transforms.Compose([
-            transforms.RandomCrop(32, padding=4),
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-
-        transform_test = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
-        ])
-        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transform_train)#normalization added
-        # dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose(transform_test))#normalization removed
-        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transform_test)#normalization removed
-    else:
-        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
-        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+   
+    dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+    dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
 
 
     data = {}
