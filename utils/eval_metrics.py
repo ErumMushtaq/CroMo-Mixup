@@ -238,7 +238,54 @@ def linear_test(net, data_loader, classifier, epoch, device):
         wandb.log({" Linear Layer Test - Acc": acc_1, " Epoch ": epoch})
     return total_loss / total_num, acc_1 , acc_5 
 
+def linear_test_sup(net, data_loader, epoch, device):
+    data_normalize_mean = (0.4914, 0.4822, 0.4465)
+    data_normalize_std = (0.247, 0.243, 0.261)
+    random_crop_size = 32
+    transform = transforms.Compose(
+            [   
+                transforms.Resize(int(random_crop_size*(8/7))), # In Imagenet: 224 -> 256 
+                transforms.CenterCrop(random_crop_size),
+                transforms.Normalize(data_normalize_mean, data_normalize_std),
+            ])
+    # evaluate model:
+    net.eval() # for not update batchnorm
+    linear_loss = 0.0
+    num = 0
+    total_loss, total_correct_1, total_correct_5, total_num, test_bar = 0.0, 0.0, 0.0, 0, tqdm(data_loader)
+    with torch.no_grad():
+        for data_tuple in test_bar:
+            data, target = [t.to(device) for t in data_tuple]
+            # data = transform(data)
 
+            # Forward prop of the model with single augmented batch
+            # feature = net.get_representation(data) 
+            output = net(data)
+
+
+            # Calculate Cross Entropy Loss for batch
+            linear_loss = F.cross_entropy(output, target)
+            
+            # Batchsize for loss and accuracy
+            num = data.size(0)
+            total_num += num 
+            
+            # Accumulating loss 
+            total_loss += linear_loss.item() * num 
+            # Accumulating number of correct predictions 
+            correct_top_1, correct_top_5 = correct_top_k(output, target, top_k=(1,5))    
+            total_correct_1 += correct_top_1
+            total_correct_5 += correct_top_5
+
+            test_bar.set_description('Lin.Test Epoch: [{}] Loss: {:.4f} ACC@1: {:.2f}% ACC@5: {:.2f}% '
+                                     .format(epoch,  total_loss / total_num,
+                                             total_correct_1 / total_num * 100, total_correct_5 / total_num * 100
+                                             ))
+        acc_1 = total_correct_1/total_num*100
+        acc_5 = total_correct_5/total_num*100
+        wandb.log({" Linear Layer Test Loss ": linear_loss / total_num, " Epoch ": epoch})
+        wandb.log({" Linear Layer Test - Acc": acc_1, " Epoch ": epoch})
+    return total_loss / total_num, acc_1 , acc_5 
 
 def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch, device):
     data_normalize_mean = (0.4914, 0.4822, 0.4465)

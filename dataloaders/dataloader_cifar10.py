@@ -5,7 +5,7 @@ import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
-from dataloaders.cifar10_dataset import SimSiam_Dataset
+from dataloaders.cifar10_dataset import SimSiam_Dataset, Sup_Dataset
 
 def find_task(classes,label):
     cur_label = 0
@@ -14,11 +14,28 @@ def find_task(classes,label):
         if label < cur_label:
             break
     return i
-def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
+def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
     pc_valid= valid_rate
     dat = {}
-    dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
-    dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+    if transform == None:
+        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+    else:
+        transform_train = transforms.Compose([
+            transforms.RandomCrop(32, padding=4),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+        dat['train']=datasets.CIFAR10('./data/cifar10/',train=True,download=True,transform=transforms.Compose(transform_train))#normalization added
+        # dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose(transform_test))#normalization removed
+        dat['test']=datasets.CIFAR10('./data/cifar10/',train=False,download=True,transform=transforms.Compose(transform_test))#normalization removed
+
     data = {}
     lower_bound = 0
     upper_bound = 0
@@ -65,7 +82,10 @@ def get_cifar10(transform, transform_prime, classes=[5,5], valid_rate = 0.05, se
         xtest = data[k]['test']['x']
         ytest = data[k]['test']['y']
 
-        train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+        if transform == None:
+            train_dataset = Sup_Dataset(xtrain, ytrain)
+        else:
+            train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
         # train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = 8, prefetch_factor = 8, pin_memory=True, persistent_workers=True))
         train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True))
 

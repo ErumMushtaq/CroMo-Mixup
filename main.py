@@ -13,9 +13,12 @@ from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
 from models.simsiam import Encoder, Predictor, SimSiam, InfoMax
 from trainers.train import train
+from trainers.train_sup import train_sup
 from trainers.train_concat import train_concate
 from torchsummary import summary
+from models.resnet import resnetc18
 import random
+import torch.nn as nn
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
@@ -127,6 +130,9 @@ if __name__ == "__main__":
                 T.RandomGrayscale(p=0.2),
                 T.RandomApply([GaussianBlur()], p=0.0), 
                 T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+    if args.algo == 'supervised':
+        transform = None
+        transform_prime = None
 
     #Dataloaders
     print("Creating Dataloaders..")
@@ -153,16 +159,22 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
         model = InfoMax(encoder, project_dim=proj_out,device=device)
         model.to(device) #automatically detects from model
+    if args.algo == 'supervised':
+        model = resnetc18()
+        model.to(device)
 
     #Training
     print("Starting Training..")
-    if args.exp_type == 'basic':
-        model, loss, optimizer = train(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+    if args.algo == 'supervised':
+        model, loss, optimizer = train_sup(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
     else:
-        train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
-                                        classes=[10], valid_rate = 0.00, batch_size=10, seed = 0, num_worker= num_worker)
-        train_data_loaders.append(train_data_loaders_all[0])
-        model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+        if args.exp_type == 'basic':
+            model, loss, optimizer = train(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+        else:
+            train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
+                                            classes=[10], valid_rate = 0.00, batch_size=10, seed = 0, num_worker= num_worker)
+            train_data_loaders.append(train_data_loaders_all[0])
+            model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
