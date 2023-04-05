@@ -256,7 +256,7 @@ def linear_test_sup(net, data_loader, epoch, device):
     with torch.no_grad():
         for data_tuple in test_bar:
             data, target = [t.to(device) for t in data_tuple]
-            # data = transform(data)
+            data = transform(data)
 
             # Forward prop of the model with single augmented batch
             # feature = net.get_representation(data) 
