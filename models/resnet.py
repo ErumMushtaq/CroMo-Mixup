@@ -28,14 +28,14 @@ class BasicBlock(nn.Module):
         self.projection = projection
         self.conv1 = nn.Conv2d(input_channels, output_channels, 
                                kernel_size=3, stride=first_stride, padding=1, bias=False)
-        #self.bn1 = nn.BatchNorm2d(output_channels)
-        self.bn1 = nn.GroupNorm(32,output_channels)
+        self.bn1 = nn.BatchNorm2d(output_channels)
+        #self.bn1 = nn.GroupNorm(32,output_channels)
         #self.bn1 = nn.Identity()
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Conv2d(output_channels, output_channels, 
                                kernel_size=3, stride=1, padding=1, bias=False)
-        #self.bn2 = nn.BatchNorm2d(output_channels)
-        self.bn2 = nn.GroupNorm(32,output_channels)
+        self.bn2 = nn.BatchNorm2d(output_channels)
+        #self.bn2 = nn.GroupNorm(32,output_channels)
         #self.bn2 = nn.Identity()
         self.shortcut = nn.Sequential()        
         if self.first_stride != 1 or self.input_channels != self.output_channels:
@@ -49,7 +49,7 @@ class BasicBlock(nn.Module):
                 self.shortcut = nn.Sequential(
                                     nn.Conv2d(self.input_channels, self.output_channels, 
                                               kernel_size=1, stride=self.first_stride, bias=False),
-                                    nn.GroupNorm(32,output_channels))
+                                    nn.BatchNorm2d(output_channels))
 
     def forward(self, x):
 
@@ -77,8 +77,8 @@ class ResNet(nn.Module):
         self.maxpool = maxpool
         self.conv1 = nn.Conv2d(input_channels, output_channels_list[0], 
                              kernel_size=c1_kernel, stride=c1_stride, padding=c1_pad, bias=False)
-        #self.bn = nn.BatchNorm2d(output_channels_list[0])
-        self.bn = nn.GroupNorm(32,output_channels_list[0])
+        self.bn = nn.BatchNorm2d(output_channels_list[0])
+        #self.bn = nn.GroupNorm(32,output_channels_list[0])
         #self.bn = nn.Identity()
         self.relu = nn.ReLU(inplace=True)
         if self.maxpool is True:
