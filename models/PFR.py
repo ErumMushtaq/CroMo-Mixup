@@ -105,7 +105,7 @@ class SimSiam_PFR(nn.Module):
                 p2_1 = self.temporal_projector(f1)
                 p2_2 = self.temporal_projector(f2)
                 lossKD = self.lambdap * (-(self.criterion(p2_1, f1Old).mean() * 0.5
-                                            + self.criterion(p2_2, f2Old).mean()) * 0.5)
+                                            + self.criterion(p2_2, f2Old).mean() * 0.5) )
                 # lossKD = self.lambdap01 * (torch.dist(f1Old, f1)+torch.dist(f2Old, f2))
                 return loss.mean() + lossKD
         else:

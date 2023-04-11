@@ -11,8 +11,8 @@ def train_sup(model, train_data_loaders, test_data_loaders, train_data_loaders_k
     # Optimizer and Scheduler
     # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
     init_lr = args.pretrain_base_lr#*args.pretrain_batch_size/256.
-    optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
-    
+    #optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
+    optimizer = torch.optim.Adam(model.parameters())
     # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=10, max_epochs=epochs,
     #                                             warmup_start_lr=args.warmup_start_lr, eta_min=2e-4)
     # scheduler = SimSiamScheduler(optimizer, 
@@ -41,7 +41,7 @@ def train_sup(model, train_data_loaders, test_data_loaders, train_data_loaders_k
                 loss.backward()
                 optimizer.step() 
                 iteration += 1
-        scheduler.step()
+        #scheduler.step()
         loss_.append(np.mean(epoch_loss))
         end = time.time()
         if (epoch+1) % args.knn_report_freq == 0:
