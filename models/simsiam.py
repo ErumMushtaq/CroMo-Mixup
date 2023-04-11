@@ -8,7 +8,7 @@ import torch
 from torch import nn, optim
 import torch.nn.functional as F
 from models.resnet import resnetc18
-from infomax_loss import invariance_loss,CovarianceLoss
+from loss import invariance_loss,CovarianceLoss, BarlowTwinsLoss
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
@@ -105,9 +105,29 @@ class InfoMax(nn.Module):
             z2 = self.encoder(x2) # NxC
             z1 = F.normalize(z1, p=2)
             z2 = F.normalize(z2, p=2)
+            
             cov_loss =  self.cov_loss(z1, z2)
             sim_loss =  invariance_loss(z1, z2) 
-            loss = (self.sim_loss_weight * sim_loss) + (self.cov_loss_weight * cov_loss)
+            loss = (self.sim_loss_weight * sim_loss) + (self.cov_loss_weight * cov_loss) 
+            return loss
+        else:
+            out = self.encoder.backbone(x1)
+            out = out.squeeze()
+            return out
+
+
+class BarlowTwins(nn.Module):
+    def __init__(self, encoder, lambda_param = 5e-3, device='cpu'):
+        super().__init__()
+        self.encoder = encoder
+        self.cross_loss = BarlowTwinsLoss(lambda_param= lambda_param)
+        
+    def forward(self, x1, x2=None):
+        device = next(self.parameters()).device
+        if self.training:
+            z1 = self.encoder(x1) # NxC
+            z2 = self.encoder(x2) # NxC
+            loss =  self.cross_loss(z1, z2)
             return loss
         else:
             out = self.encoder.backbone(x1)

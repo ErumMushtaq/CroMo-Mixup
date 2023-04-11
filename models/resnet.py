@@ -16,6 +16,22 @@ class PaddedIdentity(nn.Module):
     def forward(self, x):
         return self.padfunc(x)
 
+class Conv2d(nn.Conv2d):
+
+    def __init__(self, in_channels, out_channels, kernel_size, stride=1,
+                 padding=0, dilation=1, groups=1, bias=True):
+        super(Conv2d, self).__init__(in_channels, out_channels, kernel_size, stride,
+                 padding, dilation, groups, bias)
+
+    def forward(self, x):
+        weight = self.weight
+        weight_mean = weight.mean(dim=1, keepdim=True).mean(dim=2,
+                                  keepdim=True).mean(dim=3, keepdim=True)
+        weight = weight - weight_mean
+        std = weight.view(weight.size(0), -1).std(dim=1).view(-1, 1, 1, 1) + 1e-5
+        weight = weight / std.expand_as(weight)
+        return F.conv2d(x, weight, self.bias, self.stride,
+                        self.padding, self.dilation, self.groups)
 
 class BasicBlock(nn.Module):
 
@@ -26,16 +42,20 @@ class BasicBlock(nn.Module):
         self.output_channels = output_channels
         self.first_stride = first_stride
         self.projection = projection
+        # self.conv1 = Conv2d(input_channels, output_channels, 
+        #                        kernel_size=3, stride=first_stride, padding=1, bias=False)
         self.conv1 = nn.Conv2d(input_channels, output_channels, 
                                kernel_size=3, stride=first_stride, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm2d(output_channels)
-        #self.bn1 = nn.GroupNorm(32,output_channels)
+        # self.bn1 = nn.BatchNorm2d(output_channels)
+        self.bn1 = nn.GroupNorm(32,output_channels)
         #self.bn1 = nn.Identity()
         self.relu = nn.ReLU(inplace=True)
+        # self.conv2 = Conv2d(output_channels, output_channels, 
+        #                        kernel_size=3, stride=1, padding=1, bias=False)
         self.conv2 = nn.Conv2d(output_channels, output_channels, 
                                kernel_size=3, stride=1, padding=1, bias=False)
-        self.bn2 = nn.BatchNorm2d(output_channels)
-        #self.bn2 = nn.GroupNorm(32,output_channels)
+        # self.bn2 = nn.BatchNorm2d(output_channels)
+        self.bn2 = nn.GroupNorm(32,output_channels)
         #self.bn2 = nn.Identity()
         self.shortcut = nn.Sequential()        
         if self.first_stride != 1 or self.input_channels != self.output_channels:
@@ -47,9 +67,12 @@ class BasicBlock(nn.Module):
             # Option B: project onto new dimension
             else:
                 self.shortcut = nn.Sequential(
+                                    # Conv2d(self.input_channels, self.output_channels, 
+                                    #           kernel_size=1, stride=self.first_stride, bias=False),
                                     nn.Conv2d(self.input_channels, self.output_channels, 
                                               kernel_size=1, stride=self.first_stride, bias=False),
-                                    nn.BatchNorm2d(output_channels))
+                                    # nn.BatchNorm2d(output_channels)
+                                    nn.GroupNorm(32,output_channels))
 
     def forward(self, x):
 
@@ -75,10 +98,12 @@ class ResNet(nn.Module):
         self.layer_depths = layer_depths
         self.channels = output_channels_list[0]
         self.maxpool = maxpool
+        # self.conv1 = Conv2d(input_channels, output_channels_list[0], 
+        #                      kernel_size=c1_kernel, stride=c1_stride, padding=c1_pad, bias=False)
         self.conv1 = nn.Conv2d(input_channels, output_channels_list[0], 
                              kernel_size=c1_kernel, stride=c1_stride, padding=c1_pad, bias=False)
-        self.bn = nn.BatchNorm2d(output_channels_list[0])
-        #self.bn = nn.GroupNorm(32,output_channels_list[0])
+        # self.bn = nn.BatchNorm2d(output_channels_list[0])
+        self.bn = nn.GroupNorm(32,output_channels_list[0])
         #self.bn = nn.Identity()
         self.relu = nn.ReLU(inplace=True)
         if self.maxpool is True:
@@ -125,6 +150,8 @@ class ResNet(nn.Module):
     def _weights_init(self):
 
         for m in self.modules():
+            if isinstance(m, Conv2d):
+                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
             if isinstance(m, nn.BatchNorm2d):

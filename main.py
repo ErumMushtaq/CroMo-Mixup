@@ -11,7 +11,7 @@ import torchvision
 from dataloaders.dataloader_cifar10 import get_cifar10
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
-from models.simsiam import Encoder, Predictor, SimSiam, InfoMax
+from models.simsiam import Encoder, Predictor, SimSiam, InfoMax, BarlowTwins
 from trainers.train import train
 from trainers.train_sup import train_sup
 from trainers.train_concat import train_concate
@@ -55,6 +55,7 @@ def add_args(parser):
     parser.add_argument('--min_lr', type=float, default=0.00)
     parser.add_argument('--pretrain_momentum', type=float, default=0.9)
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
+    parser.add_argument('--lambda_param', type=float, default=5e-3)
 
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--knn_report_freq', type=int, default=10)
@@ -96,9 +97,9 @@ if __name__ == "__main__":
                 # mode="disabled",
                 config=args,
                 name="SimSiam" + "-e" + str(args.epochs) + "-b" 
-                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo))
+                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-groupnorm')
 
-    if args.algo == 'simsiam':
+    if args.algo == 'simsiam' or args.algo == 'barlowtwins':
         #augmentations
         transform = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
@@ -130,6 +131,7 @@ if __name__ == "__main__":
                 T.RandomGrayscale(p=0.2),
                 T.RandomApply([GaussianBlur()], p=0.0), 
                 T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+    
     if args.algo == 'supervised':
         transform = None
         transform_prime = None
@@ -159,6 +161,13 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
         model = InfoMax(encoder, project_dim=proj_out,device=device)
         model.to(device) #automatically detects from model
+    if args.algo == 'barlowtwins':
+        proj_hidden = 2048
+        proj_out = 2048
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+        model = BarlowTwins(encoder, lambda_param = args.lambda_param, device=device)
+        model.to(device) #automatically detects from model
+
     if args.algo == 'supervised':
         model = resnetc18()
         model.to(device)

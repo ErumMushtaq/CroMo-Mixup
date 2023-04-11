@@ -21,7 +21,7 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
     #                              constant_predictor_lr=True)
     if args.algo == 'infomax':
         scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs,warmup_start_lr=args.pretrain_warmup_lr,eta_min=args.min_lr) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
-    if args.algo == 'simsiam':
+    if args.algo == 'simsiam' or args.algo == 'barlowtwins':
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
 
     #Training Loop for x1, x2, y in train_data_loaders[0]:
@@ -33,6 +33,7 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
         iteration = 0
         for data in zip(*train_data_loaders):
             for x1, x2, y in data:   
+                x1, x2 = x1.to(device), x2.to(device)
                 loss = model(x1, x2)
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
