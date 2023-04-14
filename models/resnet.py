@@ -42,18 +42,18 @@ class BasicBlock(nn.Module):
         self.output_channels = output_channels
         self.first_stride = first_stride
         self.projection = projection
-        # self.conv1 = Conv2d(input_channels, output_channels, 
-        #                        kernel_size=3, stride=first_stride, padding=1, bias=False)
-        self.conv1 = nn.Conv2d(input_channels, output_channels, 
+        self.conv1 = Conv2d(input_channels, output_channels, 
                                kernel_size=3, stride=first_stride, padding=1, bias=False)
+        # self.conv1 = nn.Conv2d(input_channels, output_channels, 
+        #                        kernel_size=3, stride=first_stride, padding=1, bias=False)
         # self.bn1 = nn.BatchNorm2d(output_channels)
         self.bn1 = nn.GroupNorm(32,output_channels)
         #self.bn1 = nn.Identity()
         self.relu = nn.ReLU(inplace=True)
-        # self.conv2 = Conv2d(output_channels, output_channels, 
-        #                        kernel_size=3, stride=1, padding=1, bias=False)
-        self.conv2 = nn.Conv2d(output_channels, output_channels, 
+        self.conv2 = Conv2d(output_channels, output_channels, 
                                kernel_size=3, stride=1, padding=1, bias=False)
+        # self.conv2 = nn.Conv2d(output_channels, output_channels, 
+        #                        kernel_size=3, stride=1, padding=1, bias=False)
         # self.bn2 = nn.BatchNorm2d(output_channels)
         self.bn2 = nn.GroupNorm(32,output_channels)
         #self.bn2 = nn.Identity()
@@ -67,10 +67,10 @@ class BasicBlock(nn.Module):
             # Option B: project onto new dimension
             else:
                 self.shortcut = nn.Sequential(
-                                    # Conv2d(self.input_channels, self.output_channels, 
-                                    #           kernel_size=1, stride=self.first_stride, bias=False),
-                                    nn.Conv2d(self.input_channels, self.output_channels, 
+                                    Conv2d(self.input_channels, self.output_channels, 
                                               kernel_size=1, stride=self.first_stride, bias=False),
+                                    # nn.Conv2d(self.input_channels, self.output_channels, 
+                                    #           kernel_size=1, stride=self.first_stride, bias=False),
                                     # nn.BatchNorm2d(output_channels)
                                     nn.GroupNorm(32,output_channels))
 
@@ -98,10 +98,10 @@ class ResNet(nn.Module):
         self.layer_depths = layer_depths
         self.channels = output_channels_list[0]
         self.maxpool = maxpool
-        # self.conv1 = Conv2d(input_channels, output_channels_list[0], 
-        #                      kernel_size=c1_kernel, stride=c1_stride, padding=c1_pad, bias=False)
-        self.conv1 = nn.Conv2d(input_channels, output_channels_list[0], 
+        self.conv1 = Conv2d(input_channels, output_channels_list[0], 
                              kernel_size=c1_kernel, stride=c1_stride, padding=c1_pad, bias=False)
+        # self.conv1 = nn.Conv2d(input_channels, output_channels_list[0], 
+        #                      kernel_size=c1_kernel, stride=c1_stride, padding=c1_pad, bias=False)
         # self.bn = nn.BatchNorm2d(output_channels_list[0])
         self.bn = nn.GroupNorm(32,output_channels_list[0])
         #self.bn = nn.Identity()

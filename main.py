@@ -17,6 +17,7 @@ from trainers.train_sup import train_sup
 from trainers.train_concat import train_concate
 from torchsummary import summary
 from models.resnet import resnetc18
+from models.resnet_org import resnetc18_bn
 import random
 import torch.nn as nn
 
@@ -56,6 +57,8 @@ def add_args(parser):
     parser.add_argument('--pretrain_momentum', type=float, default=0.9)
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
     parser.add_argument('--lambda_param', type=float, default=5e-3)
+    parser.add_argument('--la_mu', type=float, default=0.01)
+    parser.add_argument('--la_R', type=float, default=0.01)
 
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--knn_report_freq', type=int, default=10)
@@ -159,13 +162,13 @@ if __name__ == "__main__":
         proj_hidden = 2048
         proj_out = 64
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
-        model = InfoMax(encoder, project_dim=proj_out,device=device)
+        model = InfoMax(encoder, project_dim=proj_out,device=device, la_mu=args.la_mu,la_R=args.la_R)
         model.to(device) #automatically detects from model
     if args.algo == 'barlowtwins':
         proj_hidden = 2048
         proj_out = 2048
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
-        model = BarlowTwins(encoder, lambda_param = args.lambda_param, device=device)
+        model = BarlowTwins(encoder, project_dim = proj_out, lambda_param = args.lambda_param, device=device)
         model.to(device) #automatically detects from model
 
     if args.algo == 'supervised':
