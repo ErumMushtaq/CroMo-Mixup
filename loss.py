@@ -13,6 +13,47 @@ def invariance_loss(z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
 
 
 
+class ErrorCovarianceLoss(nn.Module):
+    """Big-bang factor of CorInfoMax Loss: loss calculation from outputs of the projection network,
+    z1 (NXD) from the first branch and z2 (NXD) from the second branch. Returns loss part comes from bing-bang factor.
+    """
+    def __init__(self, project_dim,device='cpu'):
+        super(ErrorCovarianceLoss, self).__init__()
+        proj_output_dim = project_dim
+        la_R = 0.01
+        R_ini = 1.0
+        R_eps_weight = 1e-8
+        self.Re = R_ini*torch.eye(proj_output_dim , dtype=torch.float64, requires_grad=False).to(device)
+        self.new_Re = torch.zeros((proj_output_dim, proj_output_dim), dtype=torch.float64,  requires_grad=False).to(device)
+       
+
+        self.la_R = la_R
+
+        self.R_eps_weight = R_eps_weight
+        self.R_eps = self.R_eps_weight*torch.eye(proj_output_dim, dtype=torch.float64, requires_grad=False).to(device)
+
+    def forward(self, z1: torch.Tensor, z2: torch.Tensor,device = None) -> torch.Tensor:
+        la_R = self.la_R
+        N, D = z1.size()
+        # covariance matrix estimation
+        ze_hat =  z1 - z2
+   
+        Re_update = (ze_hat.T @ ze_hat) / N
+    
+        self.new_Re = la_R*(self.Re) + (1-la_R)*(Re_update)
+      
+
+        # loss calculation 
+        cov_err_loss =  (torch.logdet(self.new_Re + self.R_eps)) / D
+
+        # This is required because new_R updated with backward.
+        self.Re = self.new_Re.detach()
+
+        return cov_err_loss 
+
+
+
+
 class CovarianceLoss(nn.Module):
     """Big-bang factor of CorInfoMax Loss: loss calculation from outputs of the projection network,
     z1 (NXD) from the first branch and z2 (NXD) from the second branch. Returns loss part comes from bing-bang factor.
@@ -22,6 +63,10 @@ class CovarianceLoss(nn.Module):
         proj_output_dim = project_dim
         la_R = 0.01
         la_mu = 0.01
+
+        #la_R = 0.00
+        #la_mu = 0.00
+
         R_ini = 1.0
         R_eps_weight = 1e-8
         self.R1 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64, requires_grad=False).to(device)

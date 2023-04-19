@@ -4,6 +4,9 @@ import wandb
 import argparse
 import numpy as np
 
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
 import torch
 import torchvision.transforms as T
 import torchvision
@@ -12,16 +15,18 @@ from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
-from models.PFR import Encoder, Predictor, SimSiam_PFR, InfoMax
-from models.simsiam import  SimSiam, InfoMax
-from models.contrastive_simsiam import SimSiamContrastive
-from models.PRF_contrastive_simsiam import SimSiam_PFR_contrastive
-from trainers.train_cont import train
-from trainers.train_PFR import train_PFR
-from trainers.train_PFR_contrastive import train_PFR_contrastive
-from trainers.train_COV import train_cov
-from trainers.train_contrastive import train_contrastive
-from trainers.train_ering import train_ering
+from models.ssl import  SimSiam, Siamese, Encoder, Predictor
+
+from trainers.train_simsiam import train_simsiam
+from trainers.train_infomax import train_infomax
+from trainers.train_barlow import train_barlow
+
+from trainers.train_PFR import train_PFR_simsiam
+from trainers.train_LRD import train_LRD_infomax
+from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
+from trainers.train_contrastive import train_contrastive_simsiam
+from trainers.train_ering import train_ering_simsiam
+
 from torchsummary import summary
 import random
 
@@ -52,6 +57,18 @@ def add_args(parser):
     parser : argparse.ArgumentParser
     return a parser added with args required by fit
     """
+    # Model parameters
+    parser.add_argument('--normalization', type=str, default='batch', help='normalization method: batch, group or none')
+    parser.add_argument('--weight_standard', action='store_true', default=False, help='weight standard for conv layers')
+
+
+
+    parser.add_argument('--same_lr', action='store_true', default=False, help='same lr for each task')
+
+
+   
+    
+
     # Training settings
     parser.add_argument('--pretrain_batch_size', type=int, default=512)
     parser.add_argument('--pretrain_warmup_epochs', type=int, default=0)
@@ -59,22 +76,46 @@ def add_args(parser):
     parser.add_argument('--pretrain_base_lr', type=float, default=0.03)
     parser.add_argument('--pretrain_momentum', type=float, default=0.9)
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
-    parser.add_argument('--lambdap', type=float, default=2)
+    parser.add_argument('--min_lr', type=float, default=0.00)
+
+    parser.add_argument('--lambdap', type=float, default=2.0)
     parser.add_argument('--appr', type=str, default='basic', help='Approach name, basic, PFR') #approach
 
     parser.add_argument('--knn_report_freq', type=int, default=10)
     parser.add_argument('--cuda_device', type=int, default=0, metavar='N', help='device id')
     parser.add_argument('--num_workers', type=int, default=8, metavar='N', help='num of workers')
 
-    parser.add_argument('--ratio', type=float, default=1.0)
+    parser.add_argument('--contrastive_ratio', type=float, default=0.001)
     parser.add_argument('--dataset', type=str, default='cifar10', help='cifar10, cifar100')
-    parser.add_argument('--algo', type=str, default='simsiam', help='ssl algorithm')
     parser.add_argument('-cs', '--class_split', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
     parser.add_argument('-e', '--epochs', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
+
+    # Infomax Args
+    parser.add_argument('--cov_loss_weight', type=float, default=1.0)
+    parser.add_argument('--sim_loss_weight', type=float, default=250.0)
+    parser.add_argument('--info_loss', type=str, default='invariance',
+                        help='infomax loss')
+
+
+    #LRD parameters
+    parser.add_argument('--lambda_norm', type=float, default=1.0)
+    parser.add_argument('--subspace_rate', type=float, default=0.99)
+
+    # Barlow Twins Args
+    parser.add_argument('--lambda_param', type=float, default=5e-3)
 
     #Ering parameters
     parser.add_argument('--bsize', type=int, default=32, help='For Ering, number of samples that are sampled for each batch')
     parser.add_argument('--msize', type=str, default=150, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
+
+    #Architecture parameters
+    parser.add_argument('--proj_hidden', type=int, default=2048)
+    parser.add_argument('--proj_out', type=int, default=2048)
+
+    parser.add_argument('--pred_hidden', type=int, default=512)
+    parser.add_argument('--pred_out', type=int, default=2048)
+
+
     
     args = parser.parse_args()
     return args
@@ -101,12 +142,12 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                #mode="disabled",
+                mode="disabled",
                 config=args,
-                name="SimSiam" + "-e" + str(args.epochs) + "-b" 
-                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-appr' + str(args.appr) + '-ratio' + str(args.ratio))
+                name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
+                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
 
-    if args.algo == 'simsiam':
+    if 'simsiam' in args.appr:
         #augmentations
         transform = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
@@ -122,7 +163,7 @@ if __name__ == "__main__":
                 T.RandomGrayscale(p=0.2),
                 T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
     
-    if args.algo == 'infomax':
+    if 'infomax' in args.appr or 'barlow' in args.appr:
         transform = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
                 T.RandomHorizontalFlip(),
@@ -148,64 +189,53 @@ if __name__ == "__main__":
                                         classes=[num_classes], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
-    if args.algo == 'simsiam':
+    ##!!! Make these model arguments
+    if 'simsiam' in args.appr:
         print("Creating Model for Simsiam..")
-        proj_hidden = 2048
-        proj_out = 2048
-        pred_hidden = 512
-        pred_out = 2048
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
+        proj_hidden = args.proj_hidden
+        proj_out = args.proj_out
+        pred_hidden = args.pred_hidden
+        pred_out = args.pred_out
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-        if args.appr == 'basic' or args.appr == 'cov' or args.appr == 'ering': #baseline setup
-            model = SimSiam(encoder, predictor)
-        elif args.appr == 'contrastive':
-            model = SimSiamContrastive(encoder, predictor)
-        elif args.appr == 'PFR_contrastive':
-            model = SimSiamContrastive(encoder, predictor)
-        else: 
-            # ref for debugging the parameters: https://github.com/alviur/CVPR_PFR/blob/111f57d479055238b2e953d7311c9c2b6bc0439d/src/approach/simsiamTinyPara.py#L1318 
-            # proj_hidden = 512
-            # proj_out = 512
-            # pred_hidden = 256
-            # pred_out = 512
-            proj_hidden = 2048
-            proj_out = 2048
-            pred_hidden = 512
-            pred_out = 2048
-            encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
-            predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-            print('PFR model')
-            model = SimSiam_PFR(encoder, predictor)
+        model = SimSiam(encoder, predictor)
         model.to(device) #automatically detects from model
-    if args.algo == 'infomax':
-        proj_hidden = 2048
-        proj_out = 2048
-        pred_out = 64
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out)
-        model = InfoMax(encoder, project_dim=proj_out,device=device)
+    if 'infomax' in args.appr or 'barlow' in args.appr:
+        proj_hidden = args.proj_hidden
+        proj_out = args.proj_out
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        model = Siamese(encoder)
         model.to(device) #automatically detects from model
 
     #Training
     print("Starting Training..")
-    if args.appr == 'basic': #baseline setup
-        model, loss, optimizer = train(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
-    elif args.appr == 'PFR': #CVPR paper
-        model, loss, optimizer = train_PFR(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
-    elif args.appr == 'cov': #Generate samples from mean and cov
-        model, loss, optimizer = train_cov(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
-    elif args.appr == 'contrastive': #contrastive loss between new and old task samples
-        model, loss, optimizer = train_contrastive(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
-    elif args.appr == 'PFR_contrastive': #contrastive loss between new and old task samples
-        model, loss, optimizer = train_PFR_contrastive(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)  
-    elif args.appr == 'ering': #ERING
-        model, loss, optimizer = train_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)            
+    if args.appr == 'basic_simsiam': #baseline setup
+        model, loss, optimizer = train_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'basic_infomax': #baseline setup
+        model, loss, optimizer = train_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'basic_barlow': #baseline setup
+        model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR_simsiam': #CVPR paper
+        model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR_contrastive_simsiam': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_PFR_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'LRD_infomax': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_LRD_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)    
+    elif args.appr == 'ering_simsiam': #ERING
+        model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)            
     else:
         raise Exception('Approach does not exist in this repo')
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
     lin_epoch = 100
-    classifier = LinearClassifier().to(device)
+    if args.dataset == 'cifar10':
+        classifier = LinearClassifier(num_classes = 10).to(device)
+    elif args.dataset == 'cifar100':
+        classifier = LinearClassifier(num_classes = 100).to(device)
+
     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_knn_all[0],
@@ -217,9 +247,9 @@ if __name__ == "__main__":
     get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
 
 
+    file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 
     # save your encoder network
     save_checkpoint({
-                    'epoch': args.epochs + 1,
                     'arch': 'resnet18',
                     'lr': args.pretrain_base_lr,
                     'state_dict': model.state_dict(),
@@ -227,7 +257,7 @@ if __name__ == "__main__":
                     'loss': loss,
                     'encoder': model.encoder.backbone.state_dict(),
                     'classifier': classifier.state_dict(),
-                }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_cs_{}_bs_{}_ratio_{}.pth.tar'.format(args.pretrain_base_lr, args.class_split, args.pretrain_batch_size, args.ratio))
+                }, is_best=False, filename= file_name)
 
 
 
