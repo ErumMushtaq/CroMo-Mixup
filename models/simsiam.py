@@ -7,8 +7,8 @@
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-from models.resnet import resnetc18
-from loss import invariance_loss,CovarianceLoss, BarlowTwinsLoss
+from models.resnet import resnetc18 
+from loss import invariance_loss,CovarianceLoss, BarlowTwinsLoss, BarlowTwinsLoss_ema
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
@@ -88,12 +88,12 @@ class SimSiam(nn.Module):
 
 class InfoMax(nn.Module):
     def __init__(self, encoder, project_dim =64, sim_loss_weight=250.0,cov_loss_weight = 1.0 
-    , augment_fn = None,augment_fn2 = None,device='cpu'):
+    , augment_fn = None,augment_fn2 = None,device='cpu', la_mu=0.01, la_R=0.01):
         super().__init__()
         self.encoder = encoder
         self.augment1 = augment_fn
         self.augment2 = augment_fn2
-        self.cov_loss = CovarianceLoss(project_dim,device=device)
+        self.cov_loss = CovarianceLoss(project_dim,device=device, la_mu=la_mu,la_R=la_R)
         self.sim_loss_weight = sim_loss_weight
         self.cov_loss_weight = cov_loss_weight 
         
@@ -117,10 +117,11 @@ class InfoMax(nn.Module):
 
 
 class BarlowTwins(nn.Module):
-    def __init__(self, encoder, lambda_param = 5e-3, device='cpu'):
+    def __init__(self, encoder, project_dim, lambda_param = 5e-3, device='cpu'):
         super().__init__()
         self.encoder = encoder
-        self.cross_loss = BarlowTwinsLoss(lambda_param= lambda_param)
+        # self.cross_loss = BarlowTwinsLoss_ema(proj_dim)
+        self.cross_loss = BarlowTwinsLoss_ema(project_dim, device=device, lambda_param=lambda_param)
         
     def forward(self, x1, x2=None):
         device = next(self.parameters()).device
