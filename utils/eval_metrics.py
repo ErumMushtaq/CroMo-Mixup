@@ -13,13 +13,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 
 def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None, K = 200,sigma = 0.1):#sigma is for
-    data_normalize_mean = (0.4914, 0.4822, 0.4465)
-    data_normalize_std = (0.247, 0.243, 0.261)
-    random_crop_size = 32
-    transform = transforms.Compose(
-            [   
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ])
     """Extract features from validation split and search on train split features."""
     encoder.eval()
     encoder.to(device)
@@ -31,7 +24,6 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
             train_features = []
             train_labels = []
             for batch_idx, (inputs, t_label) in enumerate(loader):
-                inputs = transform(inputs) # normalize
                 inputs = inputs.to(device)
                 batch_size = inputs.size(0)
 
@@ -61,7 +53,6 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
             for _, (inputs, targets) in enumerate(loader):
                 targets = targets.to(device)
                 batch_size = inputs.size(0)
-                inputs = transform(inputs)
                 features = encoder(inputs.to(device))
 
                 #Task-wise result
@@ -103,13 +94,6 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
     return top1, task_acc
 
 def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None, K = 200,sigma = 0.1):#sigma is for
-    data_normalize_mean = (0.4914, 0.4822, 0.4465)
-    data_normalize_std = (0.247, 0.243, 0.261)
-    random_crop_size = 32
-    transform = transforms.Compose(
-            [   
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ])
     """Extract features from validation split and search on train split features."""
     encoder.eval()
     encoder.to(device)
@@ -119,7 +103,6 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
     total = 0
     with torch.no_grad():       
         for batch_idx, (inputs, t_label) in enumerate(train_data_loader):
-            inputs = transform(inputs) # normalize
             inputs = inputs.to(device)
             batch_size = inputs.size(0)
 
@@ -144,7 +127,6 @@ def Knn_Validation(encoder,train_data_loader,validation_data_loader,device=None,
             targets = targets.to(device)
             # targets = targets.to(device)(non_blocking=True)
             batch_size = inputs.size(0)
-            inputs = transform(inputs)
             features = encoder(inputs.to(device))
 
             dist = torch.mm(features, train_features)
@@ -188,15 +170,6 @@ def correct_top_k(outputs, targets, top_k=(1,5)):
         return result
 
 def linear_test(net, data_loader, classifier, epoch, device):
-    data_normalize_mean = (0.4914, 0.4822, 0.4465)
-    data_normalize_std = (0.247, 0.243, 0.261)
-    random_crop_size = 32
-    transform = transforms.Compose(
-            [   
-                transforms.Resize(int(random_crop_size*(8/7))), # In Imagenet: 224 -> 256 
-                transforms.CenterCrop(random_crop_size),
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ])
     # evaluate model:
     net.eval() # for not update batchnorm
     linear_loss = 0.0
@@ -205,7 +178,6 @@ def linear_test(net, data_loader, classifier, epoch, device):
     with torch.no_grad():
         for data_tuple in test_bar:
             data, target = [t.to(device) for t in data_tuple]
-            data = transform(data)
 
             # Forward prop of the model with single augmented batch
             # feature = net.get_representation(data) 
@@ -239,15 +211,6 @@ def linear_test(net, data_loader, classifier, epoch, device):
     return total_loss / total_num, acc_1 , acc_5 
 
 def linear_test_sup(net, data_loader, epoch, device):
-    data_normalize_mean = (0.4914, 0.4822, 0.4465)
-    data_normalize_std = (0.247, 0.243, 0.261)
-    random_crop_size = 32
-    transform = transforms.Compose(
-            [   
-                transforms.Resize(int(random_crop_size*(8/7))), # In Imagenet: 224 -> 256 
-                transforms.CenterCrop(random_crop_size),
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ])
     # evaluate model:
     net.eval() # for not update batchnorm
     linear_loss = 0.0
@@ -256,7 +219,6 @@ def linear_test_sup(net, data_loader, epoch, device):
     with torch.no_grad():
         for data_tuple in test_bar:
             data, target = [t.to(device) for t in data_tuple]
-            data = transform(data)
 
             # Forward prop of the model with single augmented batch
             # feature = net.get_representation(data) 
@@ -288,15 +250,6 @@ def linear_test_sup(net, data_loader, epoch, device):
     return total_loss / total_num, acc_1 , acc_5 
 
 def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch, device):
-    data_normalize_mean = (0.4914, 0.4822, 0.4465)
-    data_normalize_std = (0.247, 0.243, 0.261)
-    random_crop_size = 32
-    transform = transforms.Compose(
-            [
-                transforms.RandomResizedCrop(random_crop_size), # scale=(0.2, 1.0) is possible
-                transforms.RandomHorizontalFlip(),
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ])
 
     net.eval() # for not update batchnorm 
     total_num, train_bar = 0, tqdm(data_loader)
@@ -306,7 +259,6 @@ def linear_train(net, data_loader, train_optimizer, classifier, scheduler, epoch
         # Forward prop of the model with single augmented batch
         pos_1, target = data_tuple
         pos_1 = pos_1.to(device)
-        pos_1 = transform(pos_1)
         feature_1 = net(pos_1)
         # feature_1 = net.get_representation(pos_1) 
 

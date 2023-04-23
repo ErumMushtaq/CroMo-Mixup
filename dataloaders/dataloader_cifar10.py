@@ -1,11 +1,11 @@
 import numpy as np
 import torch
-from torch.utils.data import TensorDataset, DataLoader
+from torch.utils.data import DataLoader
 import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
-from dataloaders.cifar10_dataset import SimSiam_Dataset, Sup_Dataset
+from dataloaders.cifar10_dataset import SimSiam_Dataset, Sup_Dataset, TensorDataset
 
 def find_task(classes,label):
     cur_label = 0
@@ -14,6 +14,7 @@ def find_task(classes,label):
         if label < cur_label:
             break
     return i
+
 def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
     pc_valid= valid_rate
     dat = {}
@@ -60,6 +61,7 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
     test_data_loaders = []
     validation_data_loaders = []
     train_data_loaders_knn = []
+    train_data_loaders_linear = []
     for k in range(len(classes)):
         xtrain=data[k]['train']['x']
         ytrain=data[k]['train']['y']
@@ -75,8 +77,26 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
         # train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = 8, prefetch_factor = 8, pin_memory=True, persistent_workers=True))
         train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True))
 
-        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
-        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
-        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False, num_workers = 8))
+        data_normalize_mean = (0.4914, 0.4822, 0.4465)
+        data_normalize_std = (0.247, 0.243, 0.261)
+        transform = transforms.Compose(
+            [   
+                transforms.Normalize(data_normalize_mean, data_normalize_std),
+            ])
+        
+        random_crop_size = 32
+        transform_linear = transforms.Compose(
+                [
+                    transforms.RandomResizedCrop(random_crop_size), # scale=(0.2, 1.0) is possible
+                    transforms.RandomHorizontalFlip(),
+                    transforms.Normalize(data_normalize_mean, data_normalize_std),
+                ])
 
-    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders
+        linear_batch_size = 64
+        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
+        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
+        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8))
+
+        train_data_loaders_linear.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_linear), batch_size=linear_batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
+
+    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear

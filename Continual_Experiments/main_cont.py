@@ -65,6 +65,9 @@ def add_args(parser):
 
     parser.add_argument('--same_lr', action='store_true', default=False, help='same lr for each task')
 
+    parser.add_argument('--resume_checkpoint', action='store_true', default=False, help='start from second task LRD')
+    
+
 
    
     
@@ -142,7 +145,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                mode="disabled",
+                #mode="disabled",
                 config=args,
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
@@ -183,9 +186,9 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
     #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _ = get_dataloaders(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
-    _, train_data_loaders_knn_all, test_data_loaders_all, _ = get_dataloaders(transform, transform_prime, \
+    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all = get_dataloaders(transform, transform_prime, \
                                         classes=[num_classes], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
@@ -238,7 +241,7 @@ if __name__ == "__main__":
 
     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
-    test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_knn_all[0],
+    test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_linear_all[0],
                                                                     test_data_loaders_all[0],lin_optimizer, classifier, 
                                                                     lin_scheduler, epochs=lin_epoch, device=device) 
 
