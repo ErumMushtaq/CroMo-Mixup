@@ -34,6 +34,7 @@ def extract_subspace(model, loader, rate=0.99,device = None, Q_prev = None):
     if Q_prev == None:
         projected = torch.zeros(1)
     else:
+        Q_prev = Q_prev.to('cpu')
         projected = Q_prev  @ Q_prev.T @ outs 
 
     U, S, V = torch.svd(outs)
@@ -65,6 +66,12 @@ def train_LRD_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
         init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
+
+        if args.resume_checkpoint:
+            file_name = 'checkpoints/infomax.tar'
+            dict = torch.load(file_name)
+            model.load_state_dict(dict['state_dict'])
+            args.epochs[0] = 0
 
         project_dim = args.proj_out
         covarince_loss = CovarianceLoss(project_dim,device=device)

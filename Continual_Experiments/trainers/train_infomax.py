@@ -20,9 +20,9 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.pretrain_warmup_lr,eta_min=args.min_lr) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
 
-        covarince_loss = CovarianceLoss(args.project_out,device=device)
+        covarince_loss = CovarianceLoss(args.proj_out,device=device)
         if args.info_loss == 'error_cov':
-            err_covarince_loss = ErrorCovarianceLoss(project_dim,device=device)
+            err_covarince_loss = ErrorCovarianceLoss(args.proj_out ,device=device)
 
         loss_ = []
         for epoch in range(args.epochs[task_id]):
