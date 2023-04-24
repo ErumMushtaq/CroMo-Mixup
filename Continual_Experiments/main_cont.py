@@ -132,9 +132,13 @@ if __name__ == "__main__":
     if args.dataset == "cifar10":
         get_dataloaders = get_cifar10
         num_classes=10
+        mean = (0.4914, 0.4822, 0.4465)
+        std = (0.247, 0.243, 0.261)
     elif args.dataset == "cifar100":
         get_dataloaders = get_cifar100
         num_classes=100
+        mean = (0.5071, 0.4865, 0.4409)
+        std = (0.2673, 0.2564, 0.2762)
     assert sum(args.class_split) == num_classes
     assert len(args.class_split) == len(args.epochs)
     
@@ -157,14 +161,14 @@ if __name__ == "__main__":
                 T.RandomHorizontalFlip(),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+                T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
                 T.RandomHorizontalFlip(),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+                T.Normalize(mean=mean, std=std)])
     
     if 'infomax' in args.appr or 'barlow' in args.appr:
         transform = T.Compose([
@@ -173,7 +177,7 @@ if __name__ == "__main__":
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
                 T.RandomApply([GaussianBlur()], p=0.5), 
-                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+                T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
@@ -181,7 +185,7 @@ if __name__ == "__main__":
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
                 T.RandomApply([GaussianBlur()], p=0.5), 
-                T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261])])
+                T.Normalize(mean=mean, std=std)])
 
     #Dataloaders
     print("Creating Dataloaders..")
