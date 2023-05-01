@@ -73,23 +73,35 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
         data_normalize_mean = (0.5071, 0.4865, 0.4409)
         data_normalize_std = (0.2673, 0.2564, 0.2762)
 
+
+
+        random_crop_size = 32
         transform = transforms.Compose(
+            [
+                transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC), # In Imagenet: 224 -> 256   
+                # transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC), # In Imagenet: 224 -> 256 
+                transforms.CenterCrop(random_crop_size),
+                transforms.Normalize(data_normalize_mean, data_normalize_std),
+            ]
+        )
+        transform_knn = transforms.Compose(
             [   
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ])
-        
-        random_crop_size = 32
-        transform_linear = transforms.Compose(
-                [
-                    transforms.RandomResizedCrop(random_crop_size), # scale=(0.2, 1.0) is possible
-                    transforms.RandomHorizontalFlip(),
-                    transforms.Normalize(data_normalize_mean, data_normalize_std),
-                ])
 
-        linear_batch_size = 64
-        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
-        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
-        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid), batch_size=batch_size, shuffle=False, num_workers = 8))
+        transform_linear = transforms.Compose(
+            [
+                transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                # transforms.RandomResizedCrop(random_crop_size, interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                transforms.RandomHorizontalFlip(),
+                transforms.Normalize(data_normalize_mean, data_normalize_std),
+            ]
+        )
+
+        linear_batch_size = 256
+        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_knn), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
+        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
+        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8))
 
         train_data_loaders_linear.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_linear), batch_size=linear_batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
 

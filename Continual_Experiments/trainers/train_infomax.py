@@ -12,14 +12,13 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
     epoch_counter = 0
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
-        
-        init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
+        init_lr = args.pretrain_base_lr
+        # init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
         if task_id != 0:
             init_lr = init_lr / 10
             
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.pretrain_warmup_lr,eta_min=args.min_lr) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
-
         covarince_loss = CovarianceLoss(args.proj_out,device=device)
         if args.info_loss == 'error_cov':
             err_covarince_loss = ErrorCovarianceLoss(args.proj_out ,device=device)
@@ -29,7 +28,11 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
             start = time.time()
             model.train()
             epoch_loss = []
+            cov_loss_ = []
+            inv_loss_ = []
             for x1, x2, y in loader:  
+                x1 = x1.to(device)
+                x2 = x2.to(device)
                 z1,z2 = model(x1, x2)
 
                 z1 = F.normalize(z1, p=2)
@@ -39,11 +42,13 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
                 if args.info_loss == 'invariance':
                     sim_loss =  invariance_loss(z1, z2)
                 elif args.info_loss == 'error_cov': 
-                    sim_loss = err_covarince_loss(z1,z2)
+                    sim_loss = err_covarince_loss(z1, z2)
 
                 loss = (args.sim_loss_weight * sim_loss) + (args.cov_loss_weight * cov_loss) 
         
                 epoch_loss.append(loss.item())
+                cov_loss_.append(cov_loss.item())
+                inv_loss_.append(sim_loss.item())
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
@@ -63,6 +68,8 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
                 print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
         
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
+            wandb.log({" Average Training Cov Loss ": np.mean(cov_loss_), " Epoch ": epoch_counter})
+            wandb.log({" Average Training Inv Loss ": np.mean(inv_loss_), " Epoch ": epoch_counter})
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
     return model, loss_, optimizer

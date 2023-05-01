@@ -3,19 +3,22 @@ import sys
 import wandb
 import argparse
 import numpy as np
-
+from PIL import Image, ImageFilter, ImageOps
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
 import torch
 import torchvision.transforms as T
 import torchvision
+# import data_utils
+# from SSL.corinfomax_ssl.cifar10_tiny.data_utils import make_data
 
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
+from models.infomax_model import CovModel
 
 from trainers.train_simsiam import train_simsiam
 from trainers.train_infomax import train_infomax
@@ -33,7 +36,9 @@ import random
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 
-
+class Solarization:
+    def __call__(self, img: Image) -> Image:
+        return ImageOps.solarize(img)
 
 class GaussianBlur(object):
     """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
@@ -64,6 +69,7 @@ def add_args(parser):
 
 
     parser.add_argument('--same_lr', action='store_true', default=False, help='same lr for each task')
+    parser.add_argument("--projector", default='4096-4096-128', type=str, help='projector MLP')
 
     parser.add_argument('--resume_checkpoint', action='store_true', default=False, help='start from second task LRD')
     
@@ -118,6 +124,7 @@ def add_args(parser):
     parser.add_argument('--pred_hidden', type=int, default=512)
     parser.add_argument('--pred_out', type=int, default=2048)
 
+    parser.add_argument("--normalize_on", action="store_true", help='l2 normalization after projection MLP')
 
     
     args = parser.parse_args()
@@ -171,25 +178,29 @@ if __name__ == "__main__":
                 T.Normalize(mean=mean, std=std)])
     
     if 'infomax' in args.appr or 'barlow' in args.appr:
+        min_scale = 0.08
         transform = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-                T.RandomHorizontalFlip(),
-                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomHorizontalFlip(0.5),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=1.0), 
+                # T.RandomApply([GaussianBlur()], p=0.5), 
                 T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
-                T.RandomHorizontalFlip(),
-                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomHorizontalFlip(0.5),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=0.1),
+                # T.RandomApply([GaussianBlur()], p=0.5), 
                 T.Normalize(mean=mean, std=std)])
 
     #Dataloaders
     print("Creating Dataloaders..")
-    #Class Based
+
+    # #Class Based
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
     _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all = get_dataloaders(transform, transform_prime, \
@@ -208,10 +219,12 @@ if __name__ == "__main__":
         model = SimSiam(encoder, predictor)
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr:
-        proj_hidden = args.proj_hidden
-        proj_out = args.proj_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
-        model = Siamese(encoder)
+        # proj_hidden = args.proj_hidden
+        # proj_out = args.proj_out
+        # encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        # model = Siamese(encoder)
+        # Infomax model
+        model = CovModel(args)
         model.to(device) #automatically detects from model
 
     #Training
@@ -240,11 +253,13 @@ if __name__ == "__main__":
     lin_epoch = 100
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
+        in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
+        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     elif args.dataset == 'cifar100':
         classifier = LinearClassifier(num_classes = 100).to(device)
+        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
 
-    lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
-    lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_linear_all[0],
                                                                     test_data_loaders_all[0],lin_optimizer, classifier, 
                                                                     lin_scheduler, epochs=lin_epoch, device=device) 
