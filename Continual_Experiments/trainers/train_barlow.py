@@ -6,6 +6,7 @@ import numpy as np
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
 from loss import BarlowTwinsLoss
+from utils.lars import LARS
 
 def train_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
     epoch_counter = 0
@@ -15,10 +16,12 @@ def train_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_lo
         init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
         if task_id != 0:
             init_lr = init_lr / 10
-            
-        optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
+        
+        optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)
+        # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
+        # scheduler: adjut larnig rate: => https://github.com/facebookresearch/barlowtwins/blob/8e8d284ca0bc02f88b92328e53f9b901e86b4a3c/main.py#L155
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
-        cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param)
+        cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
 
         loss_ = []
         for epoch in range(args.epochs[task_id]):

@@ -143,3 +143,5 @@ data/cifar100/
 /data/cifar100/
 *cifar-100-python.tar.gz
 data/cifar100/cifar-100-python/
+
+/data/*

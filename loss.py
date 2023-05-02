@@ -127,7 +127,7 @@ class BarlowTwinsLoss(torch.nn.Module):
     [0] Zbontar,J. et.al, 2021, Barlow Twins... https://arxiv.org/abs/2103.0323
     """
 
-    def __init__(self, lambda_param: float = 5e-3, gather_distributed: bool = False):
+    def __init__(self, lambda_param: float = 5e-3, scale_loss = 0.025, gather_distributed: bool = False):
         """Lambda param configuration with default value like in [0]
         Args:
             lambda_param:
@@ -139,6 +139,7 @@ class BarlowTwinsLoss(torch.nn.Module):
         """
         super(BarlowTwinsLoss, self).__init__()
         self.lambda_param = lambda_param
+        self.scale_loss = scale_loss
         self.gather_distributed = gather_distributed
 
         # moving average code
@@ -168,7 +169,7 @@ class BarlowTwinsLoss(torch.nn.Module):
         c_diff = (c - torch.eye(D, device=device)).pow(2)  # DxD
         # multiply off-diagonal elems of c_diff by lambda
         c_diff[~torch.eye(D, dtype=bool)] *= self.lambda_param
-        loss = c_diff.sum()
+        loss = self.scale_loss*c_diff.sum()
 
         return loss
 

@@ -112,6 +112,7 @@ def add_args(parser):
 
     # Barlow Twins Args
     parser.add_argument('--lambda_param', type=float, default=5e-3)
+    parser.add_argument('--scale_loss', type=float, default=0.025)
 
     #Ering parameters
     parser.add_argument('--bsize', type=int, default=32, help='For Ering, number of samples that are sampled for each batch')
@@ -177,7 +178,26 @@ if __name__ == "__main__":
                 T.RandomGrayscale(p=0.2),
                 T.Normalize(mean=mean, std=std)])
     
-    if 'infomax' in args.appr or 'barlow' in args.appr:
+    if 'infomax' in args.appr:
+        min_scale = 0.08
+        transform = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomHorizontalFlip(0.5),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                T.RandomApply([GaussianBlur()], p=1.0), 
+                # T.RandomApply([GaussianBlur()], p=0.5), 
+                T.Normalize(mean=mean, std=std)])
+
+        transform_prime = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomHorizontalFlip(0.5),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                T.RandomApply([GaussianBlur()], p=0.1),
+                # T.RandomApply([GaussianBlur()], p=0.5), 
+                T.Normalize(mean=mean, std=std)])
+    if 'barlow' in args.appr: #ref: they do not have Gaussian Blur https://github.com/vturrisi/solo-learn/blob/main/scripts/pretrain/cifar/augmentations/asymmetric.yaml
         min_scale = 0.08
         transform = T.Compose([
                 T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
@@ -219,12 +239,12 @@ if __name__ == "__main__":
         model = SimSiam(encoder, predictor)
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr:
-        # proj_hidden = args.proj_hidden
-        # proj_out = args.proj_out
-        # encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
-        # model = Siamese(encoder)
+        proj_hidden = args.proj_hidden
+        proj_out = args.proj_out
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        model = Siamese(encoder)
         # Infomax model
-        model = CovModel(args)
+        # model = CovModel(args)
         model.to(device) #automatically detects from model
 
     #Training
@@ -253,8 +273,10 @@ if __name__ == "__main__":
     lin_epoch = 100
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
-        in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
-        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
+        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+        # in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
+        # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     elif args.dataset == 'cifar100':
         classifier = LinearClassifier(num_classes = 100).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler

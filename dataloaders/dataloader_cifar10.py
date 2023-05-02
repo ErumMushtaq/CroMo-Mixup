@@ -92,7 +92,7 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
                     transforms.Normalize(data_normalize_mean, data_normalize_std),
                 ])
 
-        linear_batch_size = 64
+        linear_batch_size = 256
         train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
         validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8))
