@@ -25,6 +25,9 @@ from trainers.train_infomax import train_infomax
 from trainers.train_barlow import train_barlow
 
 from trainers.train_PFR import train_PFR_simsiam
+from trainers.train_PFR_infomax import train_PFR_infomax
+from trainers.train_ering_infomax import train_ering_infomax
+from trainers.train_PFR_barlow import train_PFR_barlow
 from trainers.train_LRD import train_LRD_infomax
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
@@ -116,7 +119,7 @@ def add_args(parser):
 
     #Ering parameters
     parser.add_argument('--bsize', type=int, default=32, help='For Ering, number of samples that are sampled for each batch')
-    parser.add_argument('--msize', type=str, default=150, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
+    parser.add_argument('--msize', type=int, default=150, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
 
     #Architecture parameters
     parser.add_argument('--proj_hidden', type=int, default=2048)
@@ -234,17 +237,20 @@ if __name__ == "__main__":
         proj_out = args.proj_out
         pred_hidden = args.pred_hidden
         pred_out = args.pred_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr:
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         model = Siamese(encoder)
-        # Infomax model
-        # model = CovModel(args)
+        # print(model)
+        # # Infomax model
+        # model2 = CovModel(args)
+        # print(model2)
+        # exit()
         model.to(device) #automatically detects from model
 
     #Training
@@ -257,12 +263,18 @@ if __name__ == "__main__":
         model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_simsiam': #CVPR paper
         model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
+        model, loss, optimizer = train_PFR_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR_barlow': #CVPR paper
+        model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
         model, loss, optimizer = train_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_contrastive_simsiam': #contrastive loss between new and old task samples
         model, loss, optimizer = train_PFR_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'LRD_infomax': #contrastive loss between new and old task samples
         model, loss, optimizer = train_LRD_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)    
+    elif args.appr == 'ering_infomax': #ERING + NeurIPS
+        model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simsiam': #ERING
         model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)            
     else:

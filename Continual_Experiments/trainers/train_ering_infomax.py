@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import torchvision.transforms as T
 import torch.nn.functional as F
-
+from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
 
@@ -19,7 +19,7 @@ def loss_fn(x, y):
     y = F.normalize(y, dim=-1, p=2)
     return  - (x * y).sum(dim=-1).mean()
 
-def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args, transform, transform_prime):
+def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args, transform, transform_prime):
     memory = torch.Tensor()
 
     epoch_counter = 0
@@ -31,6 +31,9 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, test_
             
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
+        covarince_loss = CovarianceLoss(args.proj_out, device=device)
+        if args.info_loss == 'error_cov':
+            err_covarince_loss = ErrorCovarianceLoss(args.proj_out ,device=device)
 
         loss_ = []
         for epoch in range(args.epochs[task_id]):
@@ -41,26 +44,40 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, test_
             total_loss = []
             for x1, x2, y in loader:   
                 optimizer.zero_grad()
-                z1,z2,p1,p2 = model(x1, x2)
+                x1, x2 = x1.to(device), x2.to(device)
+                z1,z2 = model(x1, x2)
 
-                loss_one = loss_fn(p1, z2.detach())
-                loss_two = loss_fn(p2, z1.detach())
-                loss = 0.5*loss_one + 0.5*loss_two
-                loss_org = loss.mean()
+                z1 = F.normalize(z1, p=2)
+                z2 = F.normalize(z2, p=2)
+                cov_loss =  covarince_loss(z1, z2)
+
+                if args.info_loss == 'invariance':
+                    sim_loss =  invariance_loss(z1, z2)
+                elif args.info_loss == 'error_cov': 
+                    sim_loss = err_covarince_loss(z1, z2)
+                loss = (args.sim_loss_weight * sim_loss) + (args.cov_loss_weight * cov_loss)
+                loss_org = loss
 
                 len_org = len(x1)
-                loss_mem = 0.0
+                loss_mem = torch.tensor(0)
                 len_mem = 0.0
                 if task_id > 0:
                     indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
                     x = memory[indices].to(device)
                     x1, x2 = transform(x), transform_prime(x)
 
-                    z1,z2,p1,p2 = model(x1, x2)
-                    loss_one = loss_fn(p1, z2.detach())
-                    loss_two = loss_fn(p2, z1.detach())
-                    loss = 0.5*loss_one + 0.5*loss_two
-                    loss_mem = loss.mean()
+                    z1,z2 = model(x1, x2)
+
+                    z1 = F.normalize(z1, p=2)
+                    z2 = F.normalize(z2, p=2)
+                    cov_loss =  covarince_loss(z1, z2)
+
+                    if args.info_loss == 'invariance':
+                        sim_loss =  invariance_loss(z1, z2)
+                    elif args.info_loss == 'error_cov': 
+                        sim_loss = err_covarince_loss(z1, z2)
+                    loss = (args.sim_loss_weight * sim_loss) + (args.cov_loss_weight * cov_loss)
+                    loss_mem = loss
 
                     len_mem = args.bsize
                     epoch_loss_mem.append(loss_mem.item())

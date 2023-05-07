@@ -18,7 +18,7 @@ def loss_fn(x, y):
 
 class Encoder(nn.Module):
 
-    def __init__(self, hidden_dim=None, output_dim=2048, normalization = 'batch', weight_standard = False):
+    def __init__(self, hidden_dim=None, output_dim=2048, normalization = 'batch', weight_standard = False, appr_name = 'simsiam'):
         super().__init__()
         resnet = resnetc18(normalization = normalization, weight_standard = weight_standard)
         input_dim = resnet.fc.in_features
@@ -27,13 +27,32 @@ class Encoder(nn.Module):
         resnet_headless = nn.Sequential(*list(resnet.children())[:-1])
         resnet_headless.output_dim = input_dim
         self.backbone = resnet_headless
-        self.projector = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, output_dim),
-            nn.BatchNorm1d(output_dim)
-        )
+        #Keeping it reference: ref: https://github.com/Lightning-Universe/lightning-bolts/blob/2dfe45a4cf050f120d10981c45cfa2c785a1d5e6/pl_bolts/models/self_supervised/simsiam/simsiam_module.py
+        # self.projector = nn.Sequential( 
+        #     nn.Linear(input_dim, hidden_dim),
+        #     nn.BatchNorm1d(hidden_dim),
+        #     nn.ReLU(inplace=True),
+        #     nn.Linear(hidden_dim, output_dim),
+        #     nn.BatchNorm1d(output_dim)
+        # )
+        # #Simsiam Projector ref: https://github.com/lucidrains/byol-pytorch/blob/6717204748c2a4f4f44b991d4c59ce5b99995582/byol_pytorch/byol_pytorch.py#L86
+        if 'simsiam' in appr_name or 'barlow' in appr_name:
+            self.projector = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, output_dim),
+                nn.BatchNorm1d(output_dim))
+        if 'infomax' in appr_name:
+            self.projector = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, output_dim),)
 
     def forward(self, x):
         out = self.backbone(x).squeeze()
