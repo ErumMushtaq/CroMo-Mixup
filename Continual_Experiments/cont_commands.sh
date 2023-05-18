@@ -17,6 +17,7 @@ python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 1.0 --cuda_device 4 --appr 'PF
 ## Cifar10 infomax Experiments
 # python main_traintest.py --epochs 1000 --batch_size 512 --lin_epochs 100 --lin_batch_size 256 --R_ini 1.0  --learning_rate 0.5 --cov_loss_weight 1.0 --sim_loss_weight 250.0 --la_R 0.01 --la_mu 0.01 --projector 2048-2048-64 
 python3 main_cont.py -cs 10 -e 1000 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 4 --appr 'basic_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4
+python3 main_cont.py -cs 100 -e 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'basic_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4
 
 ## Cifar10 Barlow Experiments
 python3 main_cont.py -cs 10 -e 1000 --dataset cifar10 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 1 --appr 'basic_barlow' --pretrain_base_lr 0.3 
@@ -91,4 +92,15 @@ python3 main_cont.py -cs 25,25,25,25 -e 500,500,500,500 --dataset cifar100 --lam
 
 
 # Ering + Infomax Experiments
-python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization group --cuda_device 5 --appr 'ering_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --lambdap 10.0 --bsize 32 --msize 100 --weight_standard
+python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 5 --appr 'ering_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --lambdap 10.0 --bsize 200 --msize 300 
+
+#Ering + PFR + infomax 
+python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 7 --appr 'PFR_ering_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --lambdap 10.0 --bsize 64 --msize 150
+
+
+#CIFAR100 Balow Twins
+python3 main_cont.py -cs 25,25,25,25 -e 500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 5 --appr 'basic_barlow' --pretrain_base_lr 0.3 --pretrain_batch_size 256
+
+python3 main_cont.py -cs 25,25,25,25 -e 500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 6 --appr 'PFR_barlow' --pretrain_base_lr 0.06 --pretrain_batch_size 256  --lambdap 15.0 
+
+python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 1 --appr 'ering_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --lambdap 10.0 --bsize 256 --msize 25000 

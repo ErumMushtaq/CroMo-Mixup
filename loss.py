@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import torch.distributed as dist
-
+import wandb
 
 def invariance_loss(z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
     """Attraction factor of CorInfoMax Loss: MSE loss calculation from outputs of the projection network, z1 (NXD) from 
@@ -58,14 +58,14 @@ class CovarianceLoss(nn.Module):
     """Big-bang factor of CorInfoMax Loss: loss calculation from outputs of the projection network,
     z1 (NXD) from the first branch and z2 (NXD) from the second branch. Returns loss part comes from bing-bang factor.
     """
-    def __init__(self, project_dim,device='cpu',la_mu=0.01, la_R=0.01):
+    def __init__(self, project_dim,device='cpu',la_mu=0.01, la_R=0.01, R_eps_weight=1e-8):
         super(CovarianceLoss, self).__init__()
         proj_output_dim = project_dim
         la_R = la_R
         la_mu = la_mu
 
         R_ini = 1.0
-        R_eps_weight = 1e-8
+        R_eps_weight = R_eps_weight
         self.R1 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64, requires_grad=False).to(device)
         self.mu1 = torch.zeros(proj_output_dim, dtype=torch.float64, requires_grad=False).to(device)
         self.R2 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64,  requires_grad=False).to(device)
@@ -110,6 +110,10 @@ class CovarianceLoss(nn.Module):
         self.mu1 = self.new_mu1.detach()
         self.R2 = self.new_R2.detach()
         self.mu2 = self.new_mu2.detach()
+        self.R_eigs = torch.linalg.eigvals(self.R1).unsqueeze(0)
+        # print(torch.max(torch.real(self.R_eigs)))
+        # print(torch.min(torch.real(self.R_eigs)))
+        # print(torch.min(self.R_eigs))
 
         return cov_loss 
 
@@ -119,6 +123,16 @@ class CovarianceLoss(nn.Module):
             self.R_eigs = torch.cat((self.R_eigs, R_eig), 0)
             R_eig_arr = np.real(self.R_eigs).cpu().detach().numpy()
         return R_eig_arr 
+
+    def plot_eigs(self, epoch_counter) -> np.array: 
+        with torch.no_grad():
+            R_eig = torch.linalg.eigvals(self.R1).unsqueeze(0)
+            self.R_eigs = torch.cat((self.R_eigs, R_eig), 0)
+            R_eig_arr = np.real(self.R_eigs).cpu().detach().numpy()
+            wandb.log({" Max Eig Value ": np.max(R_eig_arr), " Epoch ": epoch_counter})  
+            wandb.log({" Min Eig Value ":  np.min(R_eig_arr), " Epoch ": epoch_counter})
+            wandb.log({" Avg Eig Value ":  np.mean(R_eig_arr), " Epoch ": epoch_counter})
+        # return R_eig_arr 
 
 class BarlowTwinsLoss(torch.nn.Module):
     #Ref: https://github.com/lightly-ai/lightly/blob/master/lightly/loss/barlow_twins_loss.py

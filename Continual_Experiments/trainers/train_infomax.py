@@ -19,7 +19,7 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
             
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.pretrain_warmup_lr,eta_min=args.min_lr) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
-        covarince_loss = CovarianceLoss(args.proj_out,device=device)
+        covarince_loss = CovarianceLoss(args.proj_out,device=device, R_eps_weight= args.R_eps_weight)
         if args.info_loss == 'error_cov':
             err_covarince_loss = ErrorCovarianceLoss(args.proj_out ,device=device)
 
@@ -57,6 +57,7 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
             scheduler.step()
             loss_.append(np.mean(epoch_loss))
             end = time.time()
+            # covarince_loss.plot_eigs(epoch_counter)
             if (epoch+1) % args.knn_report_freq == 0:
                 knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
                 wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
@@ -64,6 +65,8 @@ def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_l
                     wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
                 print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
                 print(task_acc_arr)
+                if (epoch+1) % 100 == 0:
+                    covarince_loss.plot_eigs(epoch_counter)
             else:
                 print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
         

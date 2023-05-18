@@ -34,6 +34,13 @@ def invariance_loss(z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
 
     return F.mse_loss(z1, z2)
 
+def update_memory(memory, dataloader, size):
+    indices = np.random.choice(len(dataloader.dataset), size=size, replace=False)
+    x, _ =  dataloader.dataset[indices]
+    memory = torch.cat((memory, x), dim=0)
+    return memory
+
+
 class Predictor(nn.Module):
 
     def __init__(self, input_dim=2048, hidden_dim=512, output_dim=2048):
@@ -47,8 +54,8 @@ class Predictor(nn.Module):
         out = self.fc2(out)
         return out
 
-def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
-    
+def train_PFR_ering_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args, transform, transform_prime):
+    memory = torch.Tensor()
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
             nn.Linear(args.proj_out, args.proj_hidden, bias=False),
@@ -66,6 +73,12 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
         # init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
+        
+        if args.resume_checkpoint:
+            file_name = 'checkpoints/infomax_.tar'
+            dict = torch.load(file_name)
+            model.load_state_dict(dict['state_dict']) #missing temp part
+            args.epochs[0] = 0
             
         optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
@@ -78,12 +91,19 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
             start = time.time()
             model.train()
             epoch_loss = []
-            for x1, x2, y in loader:
-                x1, x2 = x1.to(device), x2.to(device)
-                z1,z2 = model(x1, x2)
+            for x1, x2, y in loader:               
+                x1, x2 = x1.to(device), x2.to(device)                    
+                if task_id != 0:
+                    indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
+                    x = memory[indices].to(device)
+                    x1_, x2_ = transform(x), transform_prime(x)
+                    x1_, x2_ = x1_.to(device), x2_.to(device)
+                    x1, x2 = torch.cat([x1, x1_], dim = 0), torch.cat([x2, x2_], dim = 0)
 
+                z1, z2 = model(x1, x2)
                 z1 = F.normalize(z1, p=2)
                 z2 = F.normalize(z2, p=2)
+                # print(z1.shape)
                 cov_loss =  covarince_loss(z1, z2)
 
                 if args.info_loss == 'invariance':
@@ -100,7 +120,7 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
                     
                     #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
                     lossKD = args.lambdap * (-(criterion(p2_1, f1Old).mean() * 0.5
-                                           + criterion(p2_2, f2Old).mean() * 0.5) )
+                                           + criterion(p2_2, f2Old).mean() * 0.5))
                     loss += lossKD
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
@@ -131,6 +151,9 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
 
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
+
+        memory = update_memory(memory, knn_train_data_loaders[task_id], args.msize)
+        
 
     return model, loss_, optimizer
 

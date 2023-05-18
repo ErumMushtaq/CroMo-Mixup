@@ -32,8 +32,9 @@ from trainers.train_LRD import train_LRD_infomax
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam
+from trainers.train_PFR_ering_infomax import train_PFR_ering_infomax
 
-from torchsummary import summary
+# from torchsummary import summary
 import random
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
@@ -107,6 +108,7 @@ def add_args(parser):
     parser.add_argument('--sim_loss_weight', type=float, default=250.0)
     parser.add_argument('--info_loss', type=str, default='invariance',
                         help='infomax loss')
+    parser.add_argument('--R_eps_weight', type=float, default=1e-8)
 
 
     #LRD parameters
@@ -118,8 +120,8 @@ def add_args(parser):
     parser.add_argument('--scale_loss', type=float, default=0.025)
 
     #Ering parameters
-    parser.add_argument('--bsize', type=int, default=32, help='For Ering, number of samples that are sampled for each batch')
-    parser.add_argument('--msize', type=int, default=150, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
+    parser.add_argument('--bsize', type=int, default=250, help='For Ering, number of samples that are sampled for each batch')
+    parser.add_argument('--msize', type=int, default=300, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
 
     #Architecture parameters
     parser.add_argument('--proj_hidden', type=int, default=2048)
@@ -223,11 +225,23 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
 
+    # Batch Size Array
+    batch_size = []
+    
+    for k in range(len(args.class_split)):
+        if 'ering' in args.appr:
+            if k == 0: # first task
+                batch_size.append(args.pretrain_batch_size)
+            else:
+                batch_size.append(args.pretrain_batch_size - args.bsize)
+        else:
+            batch_size.append(args.pretrain_batch_size)
+
     # #Class Based
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear = get_dataloaders(transform, transform_prime, \
-                                        classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
+                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
     _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all = get_dataloaders(transform, transform_prime, \
-                                        classes=[num_classes], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
+                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
     ##!!! Make these model arguments
@@ -265,6 +279,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
         model, loss, optimizer = train_PFR_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'PFR_ering_infomax': #CVPR paper + NeurIPS Paper
+        model, loss, optimizer = train_PFR_ering_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)
     elif args.appr == 'PFR_barlow': #CVPR paper
         model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
