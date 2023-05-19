@@ -225,17 +225,20 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
 
-    # Batch Size Array
-    batch_size = []
-    
+   
     for k in range(len(args.class_split)):
-        if 'ering' in args.appr:
-            if k == 0: # first task
-                batch_size.append(args.pretrain_batch_size)
-            else:
-                batch_size.append(args.pretrain_batch_size - args.bsize)
-        else:
-            batch_size.append(args.pretrain_batch_size)
+        batch_size.append(args.pretrain_batch_size)
+    # ## To create batch size split 
+    # batch_size = []
+    
+    # for k in range(len(args.class_split)):
+    #     if 'ering' in args.appr:
+    #         if k == 0: # first task
+    #             batch_size.append(args.pretrain_batch_size)
+    #         else:
+    #             batch_size.append(args.pretrain_batch_size - args.bsize)
+    #     else:
+    #         batch_size.append(args.pretrain_batch_size)
 
     # #Class Based
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear = get_dataloaders(transform, transform_prime, \
