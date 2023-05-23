@@ -24,15 +24,13 @@ from trainers.train_simsiam import train_simsiam
 from trainers.train_infomax import train_infomax
 from trainers.train_barlow import train_barlow
 
-from trainers.train_PFR import train_PFR_simsiam
-from trainers.train_PFR_infomax import train_PFR_infomax
-from trainers.train_ering_infomax import train_ering_infomax
-from trainers.train_PFR_barlow import train_PFR_barlow
+from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow
+from trainers.train_PFR_ering import train_PFR_ering_infomax
 from trainers.train_LRD import train_LRD_infomax
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
-from trainers.train_ering import train_ering_simsiam
-from trainers.train_PFR_ering_infomax import train_PFR_ering_infomax
+from trainers.train_ering import train_ering_simsiam,train_ering_infomax
+
 
 # from torchsummary import summary
 import random
@@ -76,10 +74,6 @@ def add_args(parser):
     parser.add_argument("--projector", default='4096-4096-128', type=str, help='projector MLP')
 
     parser.add_argument('--resume_checkpoint', action='store_true', default=False, help='start from second task LRD')
-    
-
-
-   
     
 
     # Training settings
@@ -241,9 +235,9 @@ if __name__ == "__main__":
     #         batch_size.append(args.pretrain_batch_size)
 
     # #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear = get_dataloaders(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all = get_dataloaders(transform, transform_prime, \
+    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _ = get_dataloaders(transform, transform_prime, \
                                         classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
@@ -283,7 +277,7 @@ if __name__ == "__main__":
     elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
         model, loss, optimizer = train_PFR_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_ering_infomax': #CVPR paper + NeurIPS Paper
-        model, loss, optimizer = train_PFR_ering_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)
+        model, loss, optimizer = train_PFR_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)
     elif args.appr == 'PFR_barlow': #CVPR paper
         model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
@@ -293,9 +287,9 @@ if __name__ == "__main__":
     elif args.appr == 'LRD_infomax': #contrastive loss between new and old task samples
         model, loss, optimizer = train_LRD_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)    
     elif args.appr == 'ering_infomax': #ERING + NeurIPS
-        model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime) 
+        model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simsiam': #ERING
-        model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args, transform, transform_prime)            
+        model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)            
     else:
         raise Exception('Approach does not exist in this repo')
 

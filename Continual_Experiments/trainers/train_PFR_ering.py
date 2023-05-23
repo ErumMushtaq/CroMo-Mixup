@@ -54,7 +54,7 @@ class Predictor(nn.Module):
         out = self.fc2(out)
         return out
 
-def train_PFR_ering_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args, transform, transform_prime):
+def train_PFR_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
     memory = torch.Tensor()
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -152,7 +152,7 @@ def train_PFR_ering_infomax(model, train_data_loaders, knn_train_data_loaders, t
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
-        memory = update_memory(memory, knn_train_data_loaders[task_id], args.msize)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)
         
 
     return model, loss_, optimizer

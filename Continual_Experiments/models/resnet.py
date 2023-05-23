@@ -5,6 +5,7 @@ two different CIFAR-10 architectures (compare resnet18, resnetc18, and resnetc20
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from collections import OrderedDict
 
 
 class PaddedIdentity(nn.Module):
@@ -42,6 +43,9 @@ class BasicBlock(nn.Module):
         self.output_channels = output_channels
         self.first_stride = first_stride
         self.projection = projection
+
+        self.act = OrderedDict()
+        self.count = 0
 
         if weight_standard == True:
             self.conv1 = Conv2d(input_channels, output_channels, 
@@ -97,9 +101,20 @@ class BasicBlock(nn.Module):
 
     def forward(self, x):
 
+     
+        self.count = self.count % 2 
+        self.act['conv_{}'.format(self.count)] = x
+        self.count +=1
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
+
+
+
+        self.count = self.count % 2 
+        self.act['conv_{}'.format(self.count)] = out
+        self.count +=1
+
         out = self.conv2(out)
         out = self.bn2(out)
         out = out + self.shortcut(x) 
@@ -119,6 +134,8 @@ class ResNet(nn.Module):
         self.layer_depths = layer_depths
         self.channels = output_channels_list[0]
         self.maxpool = maxpool
+
+        self.act = OrderedDict()
 
         if weight_standard == True:
             self.conv1 = Conv2d(input_channels, output_channels_list[0], 
@@ -148,9 +165,11 @@ class ResNet(nn.Module):
 
     def forward(self, x):
 
+        self.act['conv_in'] = x
         out = self.conv1(x)
         out = self.bn(out)
         out = self.relu(out)
+
         if self.maxpool is True:
             out = self.mp(out)
         out = self.res1(out)

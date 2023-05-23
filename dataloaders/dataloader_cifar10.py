@@ -61,6 +61,7 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
     test_data_loaders = []
     validation_data_loaders = []
     train_data_loaders_knn = []
+    train_data_loaders_pure = []
     train_data_loaders_linear = []
     for k in range(len(classes)):
         xtrain=data[k]['train']['x']
@@ -94,9 +95,10 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
 
         linear_batch_size = 256
         train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform), batch_size=batch_size[k], shuffle=True, num_workers = num_worker, pin_memory=True))
+        train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size[k], shuffle=True, num_workers = num_worker, pin_memory=True))
         test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform), batch_size=batch_size[k], shuffle=False, num_workers = 8, pin_memory=True))
         validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size[k], shuffle=False, num_workers = 8))
 
         train_data_loaders_linear.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_linear), batch_size=linear_batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
 
-    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear
+    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear, train_data_loaders_pure
