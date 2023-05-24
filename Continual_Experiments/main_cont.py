@@ -24,9 +24,10 @@ from trainers.train_simsiam import train_simsiam
 from trainers.train_infomax import train_infomax
 from trainers.train_barlow import train_barlow
 
-from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow
+from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
 from trainers.train_PFR_ering import train_PFR_ering_infomax
 from trainers.train_LRD import train_LRD_infomax
+from trainers.train_LRD_replay import train_LRD_replay_infomax
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax
@@ -219,7 +220,7 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
 
-   
+    batch_size = []
     for k in range(len(args.class_split)):
         batch_size.append(args.pretrain_batch_size)
     # ## To create batch size split 
@@ -289,7 +290,9 @@ if __name__ == "__main__":
     elif args.appr == 'ering_infomax': #ERING + NeurIPS
         model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simsiam': #ERING
-        model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)            
+        model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
+    elif args.appr == 'LRD_replay_infomax': #LRD + Replay + infomax
+        model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)           
     else:
         raise Exception('Approach does not exist in this repo')
 

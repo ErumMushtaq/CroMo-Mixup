@@ -10,7 +10,7 @@ import torch.nn as nn
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
 from copy import deepcopy
-
+from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
 #https://github.com/DonkeyShot21/cassle/blob/main/cassle/distillers/predictive_mse.py
 
 

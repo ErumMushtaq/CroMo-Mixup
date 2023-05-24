@@ -58,9 +58,9 @@ python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 0.1 --lambda_norm 1.0 --proj_o
 python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 10.0 --lambda_norm 10.0 --same_lr --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 0 --appr 'LRD_infomax' --pretrain_base_lr 0.10
 
 
-python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 10.0  --lambda_norm 10.0 --subspace_rate 0.95 --resume_checkpoint  --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 2 --appr 'LRD_infomax' --pretrain_base_lr 0.10
+python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 10.0  --lambda_norm 10.0 --subspace_rate 0.95 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 2 --appr 'LRD_infomax' --pretrain_base_lr 0.10
 
-python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 10.0 --lambda_norm 1.0 --subspace_rate 0.95 --resume_checkpoint  --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 3 --appr 'LRD_infomax' --pretrain_base_lr 0.10
+python3 main_cont.py -cs 5,5 -e 500,500 --lambdap 10.0 --lambda_norm 1.0 --subspace_rate 0.95  --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 3 --appr 'LRD_infomax' --pretrain_base_lr 0.10
 
 
 
