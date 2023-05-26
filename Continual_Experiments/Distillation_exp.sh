@@ -1,0 +1,3 @@
+python3 main_cont.py -cs 10 -e 1000 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization group --cuda_device 4 --appr 'basic_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --R_eps_weight 1e-8
+
+python3 main_cont.py -cs 5,5 --dataset cifar10  -e 1,1 --lambdap 0.5 --lambda_norm 1.0 --subspace_rate 0.95  --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 5 --appr 'infomax_dist_ering' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4
