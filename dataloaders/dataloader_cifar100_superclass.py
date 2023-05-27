@@ -8,10 +8,56 @@ from sklearn.utils import shuffle
 from dataloaders.dataset import SimSiam_Dataset, TensorDataset
 
 
-def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
+CIFAR100_LABELS_LIST = [
+    'apple', 'aquarium_fish', 'baby', 'bear', 'beaver', 'bed', 'bee', 'beetle',
+    'bicycle', 'bottle', 'bowl', 'boy', 'bridge', 'bus', 'butterfly', 'camel',
+    'can', 'castle', 'caterpillar', 'cattle', 'chair', 'chimpanzee', 'clock',
+    'cloud', 'cockroach', 'couch', 'crab', 'crocodile', 'cup', 'dinosaur',
+    'dolphin', 'elephant', 'flatfish', 'forest', 'fox', 'girl', 'hamster',
+    'house', 'kangaroo', 'keyboard', 'lamp', 'lawn_mower', 'leopard', 'lion',
+    'lizard', 'lobster', 'man', 'maple_tree', 'motorcycle', 'mountain', 'mouse',
+    'mushroom', 'oak_tree', 'orange', 'orchid', 'otter', 'palm_tree', 'pear',
+    'pickup_truck', 'pine_tree', 'plain', 'plate', 'poppy', 'porcupine',
+    'possum', 'rabbit', 'raccoon', 'ray', 'road', 'rocket', 'rose',
+    'sea', 'seal', 'shark', 'shrew', 'skunk', 'skyscraper', 'snail', 'snake',
+    'spider', 'squirrel', 'streetcar', 'sunflower', 'sweet_pepper', 'table',
+    'tank', 'telephone', 'television', 'tiger', 'tractor', 'train', 'trout',
+    'tulip', 'turtle', 'wardrobe', 'whale', 'willow_tree', 'wolf', 'woman',
+    'worm'
+]
+CIFAR100_LABELS_LIST = np.array(CIFAR100_LABELS_LIST)
 
-    ind = np.cumsum(classes)[:-1]
-    tasks = np.split(np.arange(sum(classes)), ind, axis=0)
+sclass = []
+sclass.append(['beaver','dolphin', 'otter', 'seal', 'whale'])                       #aquatic mammals
+sclass.append(['aquarium_fish', 'flatfish', 'ray', 'shark', 'trout'])               #fish
+sclass.append(['orchid', 'poppy', 'rose', 'sunflower', 'tulip'])                    #flowers
+sclass.append(['bottle', 'bowl', 'can', 'cup', 'plate'])                            #food
+sclass.append(['apple', 'mushroom', 'orange', 'pear', 'sweet_pepper'])              #fruit and vegetables
+sclass.append(['clock', 'keyboard', 'lamp', 'telephone', 'television'])             #household electrical devices
+sclass.append(['bed', 'chair', 'couch', 'table', 'wardrobe'])                       #household furniture
+sclass.append(['bee', 'beetle', 'butterfly', 'caterpillar', 'cockroach'])           #insects
+sclass.append(['bear', 'leopard', 'lion', 'tiger', 'wolf'])                         #large carnivores
+sclass.append(['bridge', 'castle', 'house', 'road', 'skyscraper'])                  #large man-made outdoor things
+sclass.append(['cloud', 'forest', 'mountain', 'plain', 'sea'])                      #large natural outdoor scenes
+sclass.append(['camel', 'cattle', 'chimpanzee', 'elephant', 'kangaroo'])            #large omnivores and herbivores
+sclass.append(['fox', 'porcupine', 'possum', 'raccoon', 'skunk'])                   #medium-sized mammals
+sclass.append(['crab', 'lobster', 'snail', 'spider', 'worm'])                       #non-insect invertebrates
+sclass.append(['baby', 'boy', 'girl', 'man', 'woman'])                              #people
+sclass.append(['crocodile', 'dinosaur', 'lizard', 'snake', 'turtle'])               #reptiles
+sclass.append(['hamster', 'mouse', 'rabbit', 'shrew', 'squirrel'])                  #small mammals
+sclass.append(['maple_tree', 'oak_tree', 'palm_tree', 'pine_tree', 'willow_tree'])  #trees
+sclass.append(['bicycle', 'bus', 'motorcycle', 'pickup_truck', 'train'])            #vehicles 1
+sclass.append(['lawn_mower', 'rocket', 'streetcar', 'tank', 'tractor'])             #vehicles 2
+sclass = np.array(sclass)
+
+def get_cifar100_superclass(transform, transform_prime, classes=[50,50], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
+
+    tasks = []
+    for i in range(5):
+        temp = []
+        for s in sclass:
+            temp.append(np.where(CIFAR100_LABELS_LIST==s[i])[0][0])
+        tasks.append(temp)
 
     trainset=datasets.CIFAR100('./data/cifar100/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
     testset =datasets.CIFAR100('./data/cifar100/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed

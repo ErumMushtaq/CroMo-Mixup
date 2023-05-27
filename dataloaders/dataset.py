@@ -1,4 +1,3 @@
-
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as T
@@ -39,27 +38,27 @@ class SimSiam_Dataset(Dataset):
 
     def __getitem__(self, idx):
         y = self.label_data[idx]
-        x1 = self.transform(self.train_data[idx])
-        x2 = self.transform_prime(self.train_data[idx])
+        x1 = self.transform(self.train_data[idx]) if self.transform is not None else self.train_data[idx]
+        x2 = self.transform_prime(self.train_data[idx]) if self.transform_prime is not None else self.train_data[idx]
         return x1, x2, y
 
-class Sup_Dataset(Dataset):
-    def __init__(self, xtrain, ytrain):
+# class Sup_Dataset(Dataset):
+#     def __init__(self, xtrain, ytrain):
 
-        self.train_data = xtrain
-        self.label_data = ytrain
-        self.transform =  T.Compose([
-        T.RandomCrop(32, padding=4),
-        T.RandomHorizontalFlip(),
-        T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261]),
-    ])
+#         self.train_data = xtrain
+#         self.label_data = ytrain
+#         self.transform =  T.Compose([
+#         T.RandomCrop(32, padding=4),
+#         T.RandomHorizontalFlip(),
+#         T.Normalize(mean=[0.4914, 0.4822, 0.4465], std=[0.247, 0.243, 0.261]),
+#     ])
 
-    def __len__(self):
-        return len(self.train_data)
+#     def __len__(self):
+#         return len(self.train_data)
 
-    def __getitem__(self, idx):
-        y = self.label_data[idx]
-        x1 = self.transform(self.train_data[idx])
-        # x2 = self.transform_prime(self.train_data[idx])
-        return x1, y
+#     def __getitem__(self, idx):
+#         y = self.label_data[idx]
+#         x1 = self.transform(self.train_data[idx])
+#         # x2 = self.transform_prime(self.train_data[idx])
+#         return x1, y
 
