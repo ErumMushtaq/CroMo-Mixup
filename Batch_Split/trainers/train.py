@@ -6,10 +6,20 @@ import torch.nn.functional as F
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation
 from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
+from copy import deepcopy
+
+
+def update_moving_average(new_model, old_model):
+    for current_params, ma_params in zip(new_model.parameters(), old_model.parameters()):
+        old_weight, up_weight = ma_params.data, current_params.data
+        # old * self.beta + (1 - self.beta) * new
+        ma_params.data = old_weight * 0.5 + 0.5 * up_weight
+    # return new_model
 
 def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, class_split_knntrain_data_loader, class_split_test_data_loader, device, args):
 
     init_lr = args.pretrain_base_lr
+    old_model = deepcopy(model)
 
         
     optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
@@ -52,6 +62,13 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+
+
+                old_model.load_state_dict(model.state_dict())
+                update_moving_average(model, old_model)
+                # print(epoch_loss)
+
+
         print('epoch finished') 
         epoch_counter += 1
         scheduler.step()

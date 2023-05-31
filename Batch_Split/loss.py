@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 import torch.distributed as dist
-
+import wandb
 
 def invariance_loss(z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
     """Attraction factor of CorInfoMax Loss: MSE loss calculation from outputs of the projection network, z1 (NXD) from 
@@ -13,19 +13,59 @@ def invariance_loss(z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
 
 
 
+class ErrorCovarianceLoss(nn.Module):
+    """Big-bang factor of CorInfoMax Loss: loss calculation from outputs of the projection network,
+    z1 (NXD) from the first branch and z2 (NXD) from the second branch. Returns loss part comes from bing-bang factor.
+    """
+    def __init__(self, project_dim,device='cpu'):
+        super(ErrorCovarianceLoss, self).__init__()
+        proj_output_dim = project_dim
+        la_R = 0.01
+        R_ini = 1.0
+        R_eps_weight = 1e-8
+        self.Re = R_ini*torch.eye(proj_output_dim , dtype=torch.float64, requires_grad=False).to(device)
+        self.new_Re = torch.zeros((proj_output_dim, proj_output_dim), dtype=torch.float64,  requires_grad=False).to(device)
+       
+
+        self.la_R = la_R
+
+        self.R_eps_weight = R_eps_weight
+        self.R_eps = self.R_eps_weight*torch.eye(proj_output_dim, dtype=torch.float64, requires_grad=False).to(device)
+
+    def forward(self, z1: torch.Tensor, z2: torch.Tensor,device = None) -> torch.Tensor:
+        la_R = self.la_R
+        N, D = z1.size()
+        # covariance matrix estimation
+        ze_hat =  z1 - z2
+   
+        Re_update = (ze_hat.T @ ze_hat) / N
+    
+        self.new_Re = la_R*(self.Re) + (1-la_R)*(Re_update)
+      
+
+        # loss calculation 
+        cov_err_loss =  (torch.logdet(self.new_Re + self.R_eps)) / D
+
+        # This is required because new_R updated with backward.
+        self.Re = self.new_Re.detach()
+
+        return cov_err_loss 
+
+
+
+
 class CovarianceLoss(nn.Module):
     """Big-bang factor of CorInfoMax Loss: loss calculation from outputs of the projection network,
     z1 (NXD) from the first branch and z2 (NXD) from the second branch. Returns loss part comes from bing-bang factor.
     """
-    def __init__(self, project_dim,device='cpu',la_mu=0.01, la_R=0.01):
+    def __init__(self, project_dim,device='cpu',la_mu=0.01, la_R=0.01, R_eps_weight=1e-8):
         super(CovarianceLoss, self).__init__()
         proj_output_dim = project_dim
-        # la_R = la_R
-        la_R = 0.01
-        # la_mu = la_mu
-        la_mu = 0.01
+        la_R = la_R
+        la_mu = la_mu
+
         R_ini = 1.0
-        R_eps_weight = 1e-8
+        R_eps_weight = R_eps_weight
         self.R1 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64, requires_grad=False).to(device)
         self.mu1 = torch.zeros(proj_output_dim, dtype=torch.float64, requires_grad=False).to(device)
         self.R2 = R_ini*torch.eye(proj_output_dim , dtype=torch.float64,  requires_grad=False).to(device)
@@ -70,6 +110,10 @@ class CovarianceLoss(nn.Module):
         self.mu1 = self.new_mu1.detach()
         self.R2 = self.new_R2.detach()
         self.mu2 = self.new_mu2.detach()
+        self.R_eigs = torch.linalg.eigvals(self.R1).unsqueeze(0)
+        # print(torch.max(torch.real(self.R_eigs)))
+        # print(torch.min(torch.real(self.R_eigs)))
+        # print(torch.min(self.R_eigs))
 
         return cov_loss 
 
@@ -80,6 +124,16 @@ class CovarianceLoss(nn.Module):
             R_eig_arr = np.real(self.R_eigs).cpu().detach().numpy()
         return R_eig_arr 
 
+    def plot_eigs(self, epoch_counter) -> np.array: 
+        with torch.no_grad():
+            R_eig = torch.linalg.eigvals(self.R1).unsqueeze(0)
+            self.R_eigs = torch.cat((self.R_eigs, R_eig), 0)
+            R_eig_arr = np.real(self.R_eigs).cpu().detach().numpy()
+            wandb.log({" Max Eig Value ": np.max(R_eig_arr), " Epoch ": epoch_counter})  
+            wandb.log({" Min Eig Value ":  np.min(R_eig_arr), " Epoch ": epoch_counter})
+            wandb.log({" Avg Eig Value ":  np.mean(R_eig_arr), " Epoch ": epoch_counter})
+        # return R_eig_arr 
+
 class BarlowTwinsLoss(torch.nn.Module):
     #Ref: https://github.com/lightly-ai/lightly/blob/master/lightly/loss/barlow_twins_loss.py
     """Implementation of the Barlow Twins Loss from Barlow Twins[0] paper.
@@ -87,7 +141,7 @@ class BarlowTwinsLoss(torch.nn.Module):
     [0] Zbontar,J. et.al, 2021, Barlow Twins... https://arxiv.org/abs/2103.0323
     """
 
-    def __init__(self, lambda_param: float = 5e-3, gather_distributed: bool = False):
+    def __init__(self, lambda_param: float = 5e-3, scale_loss = 0.025, gather_distributed: bool = False):
         """Lambda param configuration with default value like in [0]
         Args:
             lambda_param:
@@ -99,6 +153,7 @@ class BarlowTwinsLoss(torch.nn.Module):
         """
         super(BarlowTwinsLoss, self).__init__()
         self.lambda_param = lambda_param
+        self.scale_loss = scale_loss
         self.gather_distributed = gather_distributed
 
         # moving average code
@@ -128,7 +183,7 @@ class BarlowTwinsLoss(torch.nn.Module):
         c_diff = (c - torch.eye(D, device=device)).pow(2)  # DxD
         # multiply off-diagonal elems of c_diff by lambda
         c_diff[~torch.eye(D, dtype=bool)] *= self.lambda_param
-        loss = c_diff.sum()
+        loss = self.scale_loss*c_diff.sum()
 
         return loss
 
