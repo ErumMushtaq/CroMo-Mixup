@@ -162,8 +162,12 @@ if __name__ == "__main__":
             feature_vector_base.append(feature_base)
 
         
-        for i in range(len(args.class_split)):
+        # for i in range(len(args.class_split)):
+        #     for j in range(len(args.class_split)):
+        for i in range(0,1):
             for j in range(len(args.class_split)):
+                dist_arr = [] #distance array
+                basedist_arr = []
                 if i != j: #for dismilar tasks
                     Task1 = feature_vector[i]
                     Task2 = feature_vector[j]
@@ -180,19 +184,15 @@ if __name__ == "__main__":
                     dist_arr.append((zi @ zj.T).cpu().numpy().flatten())
                     basedist_arr.append((zbi @ zbj.T).cpu().numpy().flatten())
 
-    
-    dist_arr = np.concatenate(dist_arr)
-    basedist_arr = np.concatenate(basedist_arr)
-    print(dist_arr.size)
-    # Step 4: Plot histogram
-    plt.figure()
-    bins = np.linspace(0, 1, 1000)
-    # plt.hist(dist_arr)
-    plt.hist(dist_arr, bins,alpha=0.5, label=str(args.class_split))  # density=False would make counts
-    plt.hist(basedist_arr, bins,alpha=0.5, label='Base Case') 
-    plt.legend(loc='upper left')
-    plt.ylabel('Count')
-    plt.xlabel('Cosine Distance Range')
-    plt.savefig('Cosine_sim.png')
+                    # Step 4: Plot histogram
+                    plt.figure(j)
+                    bins = np.linspace(0, 1, 1000)
+                    # plt.hist(dist_arr)
+                    plt.hist(dist_arr, bins,alpha=0.5, label=str(args.class_split))  # density=False would make counts
+                    plt.hist(basedist_arr, bins,alpha=0.5, label='Base Case') 
+                    plt.legend(loc='upper left')
+                    plt.ylabel('Count')
+                    plt.xlabel('Cosine Distance Range')
+                    plt.savefig('Cosine_sim'+str(i)+str(j))
 
    
