@@ -6,11 +6,19 @@ import torch.nn.functional as F
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation
 from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
+from copy import deepcopy
+
+
+def update_moving_average(new_model, old_model):
+    for current_params, ma_params in zip(new_model.parameters(), old_model.parameters()):
+        old_weight, up_weight = ma_params.data, current_params.data
+        # old * self.beta + (1 - self.beta) * new
+        ma_params.data = old_weight * 0.5 + 0.5 * up_weight
+    # return new_model
 
 def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, class_split_knntrain_data_loader, class_split_test_data_loader, device, args):
 
-    init_lr = args.pretrain_base_lr
-        
+    init_lr = args.pretrain_base_lr        
     optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs,warmup_start_lr=args.pretrain_warmup_lr,eta_min=args.min_lr) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
     covarince_loss = CovarianceLoss(args.proj_out,device=device, R_eps_weight= args.R_eps_weight)
@@ -45,9 +53,20 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
+<<<<<<< HEAD
                 epoch_loss.append(loss.item())
                 cov_loss_.append(cov_loss.item())
                 inv_loss_.append(sim_loss.item())
+=======
+
+
+                old_model.load_state_dict(model.state_dict())
+                update_moving_average(model, old_model)
+                # print(epoch_loss)
+
+
+        print('epoch finished') 
+>>>>>>> 8644ebc7177e8e3e9a1b9b16622df85ec077e89d
         epoch_counter += 1
         scheduler.step()
         loss_.append(np.mean(epoch_loss))

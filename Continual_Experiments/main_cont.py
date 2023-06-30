@@ -33,6 +33,7 @@ from trainers.train_LRD_replay import train_LRD_replay_infomax, train_LRD_replay
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax
+from trainers.train_dist_ering import train_dist_ering_infomax
 
 
 # from torchsummary import summary
@@ -156,6 +157,7 @@ if __name__ == "__main__":
     num_worker = args.num_workers
 
     #device
+    print(torch.cuda.is_available())
     device = torch.device("cuda:" + str(args.cuda_device) if torch.cuda.is_available() else "cpu")
     print(device)
     #wandb init
@@ -288,6 +290,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'cassle_infomax': #CVPR main paper
         model, loss, optimizer = train_cassle_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'infomax_dist_ering':
+        model, loss, optimizer = train_dist_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)
     elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
         model, loss, optimizer = train_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_contrastive_simsiam': #contrastive loss between new and old task samples

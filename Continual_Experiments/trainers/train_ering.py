@@ -7,7 +7,7 @@ import torch.nn.functional as F
 
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
-
+from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
 def update_memory(memory, dataloader, size):
     indices = np.random.choice(len(dataloader.dataset), size=size, replace=False)
     x, _ =  dataloader.dataset[indices]
