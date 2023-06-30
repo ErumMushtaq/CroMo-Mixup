@@ -8,7 +8,6 @@ import torch
 from torch import nn, optim
 import torch.nn.functional as F
 from models.resnet import resnetc18
-from loss import invariance_loss,CovarianceLoss, BarlowTwinsLoss,ErrorCovarianceLoss
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)

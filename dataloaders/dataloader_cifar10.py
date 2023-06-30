@@ -40,9 +40,9 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
             ind = np.where(Ytest == t)[0]
             xtest.append(Xtest[ind])
             ytest.append([t]*len(ind))
-        xtrain = torch.Tensor(np.concatenate(xtrain, axis=0))
+        xtrain = torch.Tensor(np.concatenate(xtrain, axis=0)/255).permute(0,3,1,2)
         ytrain = torch.tensor(np.array(ytrain).reshape(-1),dtype=int) 
-        xtest = torch.Tensor(np.concatenate(xtest, axis=0))
+        xtest = torch.Tensor(np.concatenate(xtest, axis=0)/255).permute(0,3,1,2)
         ytest = torch.tensor(np.array(ytest).reshape(-1),dtype=int) 
 
         r=np.arange(len(xtrain))

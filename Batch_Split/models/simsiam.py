@@ -8,6 +8,7 @@ import torch
 from torch import nn, optim
 import torch.nn.functional as F
 from models.resnet import resnetc18 
+from torchvision.models.resnet import resnet18
 from models.resnet_org import resnetc18_bn
 from loss import invariance_loss,CovarianceLoss, BarlowTwinsLoss, BarlowTwinsLoss_ema
 
@@ -19,11 +20,16 @@ def loss_fn(x, y):
 
 class Encoder(nn.Module):
 
-    def __init__(self, hidden_dim=None, output_dim=2048):
+    def __init__(self, hidden_dim=None, output_dim=2048, normalization = "batch", weight_standard = False):
         super().__init__()
         # resnet = resnetc18_bn()
-        resnet = resnetc18()
-        input_dim = resnet.fc.in_features
+        # self.backbone = resnet18(zero_init_residual=True)
+        # self.backbone.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        # self.backbone.maxpool = nn.Identity() 
+        # self.backbone.fc = nn.Identity()
+
+        resnet = resnetc18(10, normalization, weight_standard)
+        input_dim = 512
         if hidden_dim is None:
             hidden_dim = output_dim
         resnet_headless = nn.Sequential(*list(resnet.children())[:-1])
@@ -31,10 +37,13 @@ class Encoder(nn.Module):
         self.backbone = resnet_headless
         self.projector = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
             nn.ReLU(inplace=True),
-            nn.Linear(hidden_dim, output_dim),
-            nn.BatchNorm1d(output_dim)
+            nn.Linear(hidden_dim, hidden_dim),
+            # nn.BatchNorm1d(hidden_dim),
+            nn.ReLU(inplace=True),
+            nn.Linear(hidden_dim, output_dim, bias=True),
+            # nn.BatchNorm1d(output_dim)
         )
 
     def forward(self, x):
@@ -105,13 +114,7 @@ class InfoMax(nn.Module):
             x1, x2 = x1.to(device), x2.to(device)
             z1 = self.encoder(x1) # NxC
             z2 = self.encoder(x2) # NxC
-            z1 = F.normalize(z1, p=2)
-            z2 = F.normalize(z2, p=2)
-            
-            cov_loss =  self.cov_loss(z1, z2)
-            sim_loss =  invariance_loss(z1, z2) 
-            loss = (self.sim_loss_weight * sim_loss) + (self.cov_loss_weight * cov_loss) 
-            return loss
+            return z1, z2
         else:
             out = self.encoder.backbone(x1)
             out = out.squeeze()
@@ -137,14 +140,7 @@ class BarlowTwins(nn.Module):
             out = out.squeeze()
             return out
         
+
+
         
-class LinearClassifier(nn.Module):
-
-    def __init__(self, input_dim, num_classes=10):
-        super().__init__()
-        self.fc = nn.Linear(input_dim, num_classes)
-
-    def forward(self, x):
-        out = x.squeeze()
-        out = F.softmax(self.fc(out), dim=1)
-        return out
+        

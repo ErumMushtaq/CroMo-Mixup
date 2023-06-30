@@ -25,9 +25,11 @@ from trainers.train_infomax import train_infomax
 from trainers.train_barlow import train_barlow
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
+from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax
 from trainers.train_PFR_ering import train_PFR_ering_infomax
-from trainers.train_LRD import train_LRD_infomax
-from trainers.train_LRD_replay import train_LRD_replay_infomax
+from trainers.train_LRD import train_LRD_infomax,train_LRD_barlow
+from trainers.train_LRD_scale import train_LRD_scale_infomax
+from trainers.train_LRD_replay import train_LRD_replay_infomax, train_LRD_replay_barlow
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax
@@ -107,8 +109,9 @@ def add_args(parser):
 
 
     #LRD parameters
-    parser.add_argument('--lambda_norm', type=float, default=1.0)
+    parser.add_argument('--lambda_norm', type=float, default=0.0)
     parser.add_argument('--subspace_rate', type=float, default=0.99)
+    parser.add_argument('--scale', type=float, default=1.0)
 
     # Barlow Twins Args
     parser.add_argument('--lambda_param', type=float, default=5e-3)
@@ -157,7 +160,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                #mode="disabled",
+                # mode="disabled",
                 config=args,
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
@@ -204,8 +207,8 @@ if __name__ == "__main__":
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=1.0), 
-                # T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=0.0), 
+                T.RandomSolarize(0.51, p=0.0), 
                 T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
@@ -213,16 +216,14 @@ if __name__ == "__main__":
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.1),
-                # T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=0.0),
+                T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
 
     #Dataloaders
     print("Creating Dataloaders..")
 
-    batch_size = []
-    for k in range(len(args.class_split)):
-        batch_size.append(args.pretrain_batch_size)
+    batch_size = args.pretrain_batch_size
     # ## To create batch size split 
     # batch_size = []
     
@@ -279,20 +280,32 @@ if __name__ == "__main__":
         model, loss, optimizer = train_PFR_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_ering_infomax': #CVPR paper + NeurIPS Paper
         model, loss, optimizer = train_PFR_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)
-    elif args.appr == 'PFR_barlow': #CVPR paper
+    elif args.appr == 'PFR_barlow': #CVPR Workshop paper
         model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'cassle_barlow': #CVPR main paper
+        model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'cassle_simsiam': #CVPR main paper
+        model, loss, optimizer = train_cassle_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'cassle_infomax': #CVPR main paper
+        model, loss, optimizer = train_cassle_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
         model, loss, optimizer = train_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_contrastive_simsiam': #contrastive loss between new and old task samples
         model, loss, optimizer = train_PFR_contrastive_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'LRD_infomax': #contrastive loss between new and old task samples
-        model, loss, optimizer = train_LRD_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)    
+        model, loss, optimizer = train_LRD_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'LRD_barlow': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_LRD_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'LRD_scale_infomax': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_LRD_scale_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)     
     elif args.appr == 'ering_infomax': #ERING + NeurIPS
         model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simsiam': #ERING
         model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
     elif args.appr == 'LRD_replay_infomax': #LRD + Replay + infomax
-        model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)           
+        model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
+    elif args.appr == 'LRD_replay_barlow': #LRD + Replay + barlow
+        model, loss, optimizer = train_LRD_replay_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)          
     else:
         raise Exception('Approach does not exist in this repo')
 

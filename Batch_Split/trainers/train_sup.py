@@ -4,63 +4,60 @@ import torch
 import numpy as np
 import torch.nn as nn
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
-from utils.eval_metrics import Knn_Validation, linear_test_sup
+from utils.eval_metrics import linear_test
 
-def train_sup(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, class_split_knntrain_data_loader, class_split_test_data_loader, device, args):
 
+def train_sup(model, train_data_loaders, test_data_loaders, device, args):
     # Optimizer and Scheduler
-    # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
-    init_lr = args.pretrain_base_lr#*args.pretrain_batch_size/256.
-    #optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
-    optimizer = torch.optim.Adam(model.parameters())
-    # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=10, max_epochs=epochs,
-    #                                             warmup_start_lr=args.warmup_start_lr, eta_min=2e-4)
-    # scheduler = SimSiamScheduler(optimizer, 
-    #                              warmup_epochs=args.pretrain_warmup_epochs, warmup_lr=args.pretrain_warmup_lr*args.pretrain_batch_size/256., 
-    #                              num_epochs=args.final_pretrain_epoch, base_lr=args.pretrain_base_lr*args.pretrain_batch_size/256., final_lr=0, iter_per_epoch=len(train_data_loaders), 
-    #                              constant_predictor_lr=True)
+    # optimizer = torch.optim.Adam(model.parameters(), lr=args.pretrain_base_lr, weight_decay=args.pretrain_weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), lr=args.pretrain_base_lr, weight_decay=args.pretrain_weight_decay, 
+                                momentum=args.pretrain_momentum, nesterov=True)
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 120, 160], gamma=0.2)
+    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, args.pretrain_base_lr, 
+    #                                                 epochs=args.epochs, steps_per_epoch=len(train_data_loaders[0])*len(train_data_loaders))
 
-    scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs)
     criterion = nn.CrossEntropyLoss()
-
-    #Training Loop for x1, x2, y in train_data_loaders[0]:
     loss_ = []
     for epoch in range(args.epochs):
         start = time.time()
         model.train()
         epoch_loss = []
-        iteration = 0
+        true_samples = 0
+        total_samples = 0
         for data in zip(*train_data_loaders):
-            for x1,  y in data:  
+            for x1, _, y in data:  
                 x1 = x1.to(device) 
                 y = y.to(device)
                 outputs = model(x1)
                 loss = criterion(outputs, y)
+                total_samples += len(x1)
+                pred = torch.argsort(outputs, dim=-1, descending=True)[:, 0]
+                true_samples += torch.sum((pred == y)).item()
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step() 
-                iteration += 1
-        #scheduler.step()
+        scheduler.step()
         loss_.append(np.mean(epoch_loss))
+
+        model.eval()
+        true_samples_test = 0
+        total_samples_test = 0
+        for x1, y in test_data_loaders:
+            x1 = x1.to(device) 
+            y = y.to(device)
+            outputs = model(x1)
+            total_samples_test += len(x1)
+            pred = torch.argsort(outputs, dim=-1, descending=True)[:, 0]
+            true_samples_test += torch.sum((pred == y)).item()
         end = time.time()
         if (epoch+1) % args.knn_report_freq == 0:
-            loss, acc1, acc5 = linear_test_sup(model, test_data_loaders, epoch, device)
-            # # class_split_test_data_loader
-            # # knn_acc = Knn_Validation(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
-            # wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch})
-            # if len(class_split_test_data_loader) > 1: 
-            #     for i in range(len(class_split_test_data_loader)):
-            #         knn_acc_class = Knn_Validation(model, class_split_knntrain_data_loader[i], class_split_test_data_loader[i], device=device, K=200, sigma=0.5)
-            #         wandb.log({" Knn Accuracy Class-"+str(i): knn_acc_class, " Epoch ": epoch})
-                    
+            linear_test(model, test_data_loaders, None, epoch, device)
 
-        #     print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
-        # else:
-        print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
-    
+        wandb.log({" Global Linear Accuracy ": true_samples_test/total_samples_test*100, " Epoch ": epoch})
         wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch})  
         wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch})
 
+        print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} | Acc: {true_samples/total_samples*100:.2f}% \
+| Acc Test: {true_samples_test/total_samples_test*100:.2f}')
     return model, loss_, optimizer
-

@@ -10,7 +10,7 @@ import torch.nn as nn
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
 from copy import deepcopy
-from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss,BarlowTwinsLoss
+from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss, BarlowTwinsLoss
 from utils.lars import LARS
 #https://github.com/DonkeyShot21/cassle/blob/main/cassle/distillers/predictive_mse.py
 
@@ -47,7 +47,7 @@ class Predictor(nn.Module):
         out = self.fc2(out)
         return out
 
-def train_PFR_simsiam(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
+def train_cassle_simsiam(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -98,8 +98,8 @@ def train_PFR_simsiam(model, train_data_loaders, knn_train_data_loaders, test_da
                     
                     #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
 
-                    lossKD = args.lambdap * (-(criterion(p2_1, f1Old).mean() * 0.5
-                                           + criterion(p2_2, f2Old).mean() * 0.5) )
+                    lossKD = args.lambdap * ((loss_fn(p2_1, f1Old).mean() * 0.5
+                                           + loss_fn(p2_2, f2Old).mean() * 0.5) )
                     loss += lossKD 
                 
 
@@ -136,7 +136,7 @@ def train_PFR_simsiam(model, train_data_loaders, knn_train_data_loaders, test_da
     return model, loss_, optimizer
 
 
-def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
+def train_cassle_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -147,6 +147,7 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
         ).to(device)
     old_model = None
     criterion = nn.CosineSimilarity(dim=1)
+    cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
 
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
@@ -186,10 +187,9 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
                     f2Old = oldModel(x2).squeeze().detach()
                     p2_1 = model.temporal_projector(z1)
                     p2_2 = model.temporal_projector(z2)
-                    
-                    #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
-                    lossKD = args.lambdap * (-(criterion(p2_1, f1Old).mean() * 0.5
-                                           + criterion(p2_2, f2Old).mean() * 0.5) )
+
+                    lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
+                                           + cross_loss(p2_2, f2Old).mean() * 0.5) )
                     loss += lossKD
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
@@ -224,7 +224,7 @@ def train_PFR_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
     return model, loss_, optimizer
 
 
-def train_PFR_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
+def train_cassle_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -273,8 +273,8 @@ def train_PFR_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
                     
                     #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
 
-                    lossKD = args.lambdap * (-(criterion(p2_1, f1Old).mean() * 0.5
-                                           + criterion(p2_2, f2Old).mean() * 0.5) )
+                    lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
+                                           + cross_loss(p2_2, f2Old).mean() * 0.5) )
                     loss += lossKD 
                 
                 epoch_loss.append(loss.item())
@@ -305,6 +305,7 @@ def train_PFR_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
         oldModel.eval()
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
+
 
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 

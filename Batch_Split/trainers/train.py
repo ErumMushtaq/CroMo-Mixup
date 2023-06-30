@@ -10,7 +10,6 @@ from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
 def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, class_split_knntrain_data_loader, class_split_test_data_loader, device, args):
 
     init_lr = args.pretrain_base_lr
-
         
     optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs,warmup_start_lr=args.pretrain_warmup_lr,eta_min=args.min_lr) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
@@ -18,15 +17,12 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
     if args.info_loss == 'error_cov':
         err_covarince_loss = ErrorCovarianceLoss(args.proj_out ,device=device)
 
-    #Training Loop for x1, x2, y in train_data_loaders[0]:
     loss_ = []
     epoch_counter = 0
     for epoch in range(args.epochs):
         start = time.time()
         model.train()
         epoch_loss = []
-        iteration = 0
-
         cov_loss_ = []
         inv_loss_ = []
         for data in zip(*train_data_loaders):
@@ -46,13 +42,12 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
 
                 loss = (args.sim_loss_weight * sim_loss) + (args.cov_loss_weight * cov_loss) 
         
-                epoch_loss.append(loss.item())
-                cov_loss_.append(cov_loss.item())
-                inv_loss_.append(sim_loss.item())
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-        print('epoch finished') 
+                epoch_loss.append(loss.item())
+                cov_loss_.append(cov_loss.item())
+                inv_loss_.append(sim_loss.item())
         epoch_counter += 1
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
