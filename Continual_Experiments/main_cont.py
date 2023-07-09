@@ -28,7 +28,8 @@ from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_info
 from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax
 from trainers.train_PFR_ering import train_PFR_ering_infomax
 from trainers.train_LRD import train_LRD_infomax,train_LRD_barlow
-from trainers.train_LRD_scale import train_LRD_scale_infomax
+from trainers.train_LRD_scale import train_LRD_scale_infomax, train_LRD_scale_barlow
+from trainers.train_LRD_cross import  train_LRD_cross_barlow
 from trainers.train_LRD_replay import train_LRD_replay_infomax, train_LRD_replay_barlow
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
@@ -301,7 +302,9 @@ if __name__ == "__main__":
     elif args.appr == 'LRD_barlow': #contrastive loss between new and old task samples
         model, loss, optimizer = train_LRD_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'LRD_scale_infomax': #contrastive loss between new and old task samples
-        model, loss, optimizer = train_LRD_scale_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)     
+        model, loss, optimizer = train_LRD_scale_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'LRD_scale_barlow': #contrastive loss between new and old task samples
+        model, loss, optimizer = train_LRD_scale_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)      
     elif args.appr == 'ering_infomax': #ERING + NeurIPS
         model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simsiam': #ERING
@@ -309,7 +312,9 @@ if __name__ == "__main__":
     elif args.appr == 'LRD_replay_infomax': #LRD + Replay + infomax
         model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
     elif args.appr == 'LRD_replay_barlow': #LRD + Replay + barlow
-        model, loss, optimizer = train_LRD_replay_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)          
+        model, loss, optimizer = train_LRD_replay_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
+    elif args.appr == 'LRD_cross_barlow': #LRD + Replay + barlow
+        model, loss, optimizer = train_LRD_cross_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args)          
     else:
         raise Exception('Approach does not exist in this repo')
 

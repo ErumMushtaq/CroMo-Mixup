@@ -38,7 +38,8 @@ def extract_subspace(model, loader, rate=0.99,device = None, Q_prev = None, task
         Q_prev = Q_prev.to('cpu')
         projected = Q_prev  @ Q_prev.T @ outs 
 
-    U, S, V = torch.svd(outs)
+    remaining = outs - projected
+    U, S, V = torch.svd(remaining)
     for i in range(len(S)):
         total = torch.norm(outs)**2 
         hand =  torch.norm(projected)**2 + torch.norm(S[0:i+1])**2
@@ -101,8 +102,8 @@ def train_LRD_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
                     f1_projected = f1 @ Q @ Q.T  
                     f2_projected = f2 @ Q @ Q.T
 
-                    f1 = f1 - f1_projected
-                    f2 = f2 - f2_projected
+                    f1 = f1#- f1_projected
+                    f2 = f2# - f2_projected
 
                     norm_loss_1 = torch.norm(f1_projected,dim =1) / (torch.norm(f1,dim =1) + 0.0000001) 
                     norm_loss_1 = torch.mean(norm_loss_1)
@@ -173,6 +174,8 @@ def train_LRD_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
+        Q = None # each time make Q empty
+        
         Q = extract_subspace(model, knn_train_data_loaders[task_id], rate= args.subspace_rate,device = device, Q_prev = Q, task=task_id)
         Q = Q.to(device)
 
@@ -241,8 +244,8 @@ def train_LRD_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
                     f1_projected = f1 @ Q @ Q.T  
                     f2_projected = f2 @ Q @ Q.T
 
-                    f1 = f1 - f1_projected
-                    f2 = f2 - f2_projected
+                    f1 = f1 #- f1_projected
+                    f2 = f2 #- f2_projected
 
                     norm_loss_1 = torch.norm(f1_projected,dim =1) / (torch.norm(f1,dim =1) + 0.0000001) 
                     norm_loss_1 = torch.mean(norm_loss_1)
@@ -310,6 +313,8 @@ def train_LRD_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
+        Q = None # each time make Q empty
+        
         Q = extract_subspace(model, knn_train_data_loaders[task_id], rate= args.subspace_rate,device = device, Q_prev = Q, task=task_id)
         Q = Q.to(device)
 
@@ -317,7 +322,7 @@ def train_LRD_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
         #file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)
         #+"-CS"+str(args.class_split) + 'task_' + str(task_id) + 'lambdap_' + str(args.lambdap) + 'lambda_norm_' + str(args.lambda_norm) + 'same_lr_' + str(args.same_lr) + 'norm_' + str(normalization) + 'ws_' + str(args.weight_standard) + '.pth.tar' 
         
-        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + 'updated_loss' + '.pth.tar'
 
         # save your encoder network
         torch.save({

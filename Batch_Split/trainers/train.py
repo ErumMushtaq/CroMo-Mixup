@@ -53,11 +53,6 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
-<<<<<<< HEAD
-                epoch_loss.append(loss.item())
-                cov_loss_.append(cov_loss.item())
-                inv_loss_.append(sim_loss.item())
-=======
 
 
                 old_model.load_state_dict(model.state_dict())
@@ -66,7 +61,6 @@ def train(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, 
 
 
         print('epoch finished') 
->>>>>>> 8644ebc7177e8e3e9a1b9b16622df85ec077e89d
         epoch_counter += 1
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
