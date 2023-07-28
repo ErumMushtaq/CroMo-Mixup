@@ -18,6 +18,41 @@ def loss_fn(x, y):
     y = F.normalize(y, dim=-1, p=2)
     return  - (x * y).sum(dim=-1).mean()
 
+def get_linear_vector(model, loader, rate=0.99,device = None, task=None):
+    model.eval()
+    outs = []
+    for x,y in loader:
+        x = x.to(device)
+        out = model(x).cpu().detach().numpy()
+        outs.append(out)
+        
+    outs = np.concatenate(outs)
+    outs = outs.transpose()
+    outs = torch.tensor(outs)
+
+    
+
+    remaining = outs
+    U, S, V = torch.svd(remaining)
+    for i in range(len(S)):
+        total = torch.norm(outs)**2 
+        hand =  torch.norm(S[0:i+1])**2
+        
+        if hand / total > rate:
+            break
+
+    print(U[:,0:i+1].shape)
+
+    
+    Q = U[:,0:i+1]
+    Q_weighted = Q * S[0:i+1].reshape(1,-1)
+
+    vector = torch.mean(Q_weighted,dim=1)
+    vector = torch.nn.functional.normalize(vector,dim=0)
+   
+
+    return vector
+
 def extract_subspace(model, loader, rate=0.99,device = None, Q_prev = None, task=None):
     model.eval()
     outs = []
@@ -66,7 +101,7 @@ def update_memory(memory_x, memory_y, dataloader, size, task):
     memory_y = torch.cat((memory_y, y), dim=0)
     return memory_x, memory_y.to(dtype=torch.long)
 
-def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args):#just for 2 tasks
+def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, device, args):#just for 2 tasks
     
     memory_x = torch.Tensor()
     memory_y = torch.Tensor()
@@ -75,6 +110,7 @@ def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, tr
     criterion = nn.CosineSimilarity(dim=1)
     cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
     Q = None
+    contrastive_classifier = None
 
     crossentry_loss = nn.CrossEntropyLoss()
 
@@ -114,8 +150,8 @@ def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, tr
                     x_old = memory_x[indices].to(device)
                     y_old = memory_y[indices].to(device)
                     #samples from the new task
-                    indices = np.random.choice(len(train_data_loaders_pure[task_id].dataset), size=args.bsize, replace=False)
-                    x_new, _ =  train_data_loaders_pure[task_id].dataset[indices]
+                    indices = np.random.choice(len(knn_train_data_loaders[task_id].dataset), size=args.bsize, replace=False)
+                    x_new, _ =  knn_train_data_loaders[task_id].dataset[indices]
                     x_new = x_new.to(device)
                     y_new = torch.ones(x_new.shape[0],dtype=torch.long).to(device) * task_id          
                     #concatenate
@@ -142,14 +178,17 @@ def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, tr
                 z1 = model.encoder.projector(f1) # NxC
                 z2 = model.encoder.projector(f2) # NxC
 
-                z1 = F.normalize(z1, p=2)
-                z2 = F.normalize(z2, p=2)
+                #z1 = F.normalize(z1, p=2)
+                #z2 = F.normalize(z2, p=2)
 
                 loss_task = cross_loss(z1, z2) 
 
                 if task_id != 0: #do Distillation
                     f1Old = oldModel(x1).squeeze().detach()
                     f2Old = oldModel(x2).squeeze().detach()
+
+                    f1Old = f1Old @ Q @ Q.T  
+                    f2Old = f2Old @ Q @ Q.T
 
                     lossKD = (-(criterion(f1_projected, f1Old).mean() * 0.5
                                             + criterion(f2_projected, f2Old).mean() * 0.5) )
@@ -197,7 +236,7 @@ def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, tr
 
         oldModel = deepcopy(model.encoder.backbone)  # save t-1 model
         oldModel.to(device)
-        oldModel.eval()
+        oldModel.train()
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
@@ -206,12 +245,24 @@ def train_LRD_cross_barlow(model, train_data_loaders, knn_train_data_loaders, tr
         Q = extract_subspace(model, knn_train_data_loaders[task_id], rate= args.subspace_rate,device = device, Q_prev = Q, task=task_id)
         Q = Q.to(device)
 
-        contrastive_classifier = nn.Linear(f1.shape[1], task_id+2, bias=False).to(device)
+        vec = get_linear_vector(model, knn_train_data_loaders[task_id], rate= args.subspace_rate, device = device, task=task_id)
+
+        new_contrastive_classifier = nn.Linear(f1.shape[1], task_id+2, bias=False).to(device)
+
+        with torch.no_grad():
+            if contrastive_classifier != None:
+                new_contrastive_classifier.weight[:task_id,:] = contrastive_classifier.weight[:task_id,:].detach().cpu()
+
+            new_contrastive_classifier.weight[task_id,:] = vec.detach().cpu()
+            new_contrastive_classifier.weight[task_id+1,:] = torch.nn.functional.normalize(new_contrastive_classifier.weight[task_id+1,:],dim=0)
+            
+
+        contrastive_classifier = new_contrastive_classifier
         contrastive_optimizer = torch.optim.SGD(contrastive_classifier.parameters(), lr=0.001)
 
-        memory_x, memory_y = update_memory(memory_x,memory_y, train_data_loaders_pure[task_id], args.msize, task_id)
+        memory_x, memory_y = update_memory(memory_x,memory_y, knn_train_data_loaders[task_id], args.msize, task_id)
 
-        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + 'updated_loss' + '.pth.tar'
+        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard)+ '_contrastive_ratio_' + str(args.contrastive_ratio)  + '.pth.tar'
 
         # save your encoder network
         torch.save({

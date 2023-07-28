@@ -3,6 +3,27 @@ from torch.utils.data import Dataset
 import torchvision.transforms as T
 import torch.nn as nn
 
+class GenericDataset(Dataset):
+    def __init__(self, xtrain, ytrain, transforms=None):
+
+        self.train_data = xtrain
+        self.label_data = ytrain
+
+        self.transforms = transforms
+
+    def __len__(self):
+        return len(self.train_data)
+
+    def __getitem__(self, idx):
+        y = self.label_data[idx]
+        result_x = []
+        if self.transforms != None:
+            for transform in self.transforms:
+                result_x.append(transform(self.train_data[idx]))
+        else:
+            result_x.append(self.train_data[idx])
+        return result_x, y
+
 
 class TensorDataset(Dataset):
     def __init__(self, xtrain, ytrain, transform=None):

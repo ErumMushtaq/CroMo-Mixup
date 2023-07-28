@@ -26,6 +26,9 @@ from trainers.train_barlow import train_barlow
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
 from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax
+
+from trainers.train_cassle_contrastive import train_cassle_contrastive_v1_barlow,train_cassle_contrastive_v2_barlow, train_cassle_contrastive_v3_barlow
+
 from trainers.train_PFR_ering import train_PFR_ering_infomax
 from trainers.train_LRD import train_LRD_infomax,train_LRD_barlow
 from trainers.train_LRD_scale import train_LRD_scale_infomax, train_LRD_scale_barlow
@@ -130,6 +133,8 @@ def add_args(parser):
     parser.add_argument('--pred_hidden', type=int, default=512)
     parser.add_argument('--pred_out', type=int, default=2048)
 
+    parser.add_argument('--contrastive_hidden', type=int, default=512)
+
     parser.add_argument("--normalize_on", action="store_true", help='l2 normalization after projection MLP')
 
     
@@ -163,7 +168,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                # mode="disabled",
+                #mode="disabled",
                 config=args,
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
@@ -240,9 +245,9 @@ if __name__ == "__main__":
     #         batch_size.append(args.pretrain_batch_size)
 
     # #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _ = get_dataloaders(transform, transform_prime, \
+    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
                                         classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
@@ -286,7 +291,7 @@ if __name__ == "__main__":
     elif args.appr == 'PFR_barlow': #CVPR Workshop paper
         model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'cassle_barlow': #CVPR main paper
-        model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+        model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'cassle_simsiam': #CVPR main paper
         model, loss, optimizer = train_cassle_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'cassle_infomax': #CVPR main paper
@@ -314,13 +319,19 @@ if __name__ == "__main__":
     elif args.appr == 'LRD_replay_barlow': #LRD + Replay + barlow
         model, loss, optimizer = train_LRD_replay_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'LRD_cross_barlow': #LRD + Replay + barlow
-        model, loss, optimizer = train_LRD_cross_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args)          
+        model, loss, optimizer = train_LRD_cross_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+    elif args.appr == 'cassle_contrastive_v1_barlow': #LRD + Replay + barlow
+        model, loss, optimizer = train_cassle_contrastive_v1_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, transform, transform_prime, device, args)         
+    elif args.appr == 'cassle_contrastive_v2_barlow': #LRD + Replay + barlow
+        model, loss, optimizer = train_cassle_contrastive_v2_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, transform, transform_prime, device, args)  
+    elif args.appr == 'cassle_contrastive_v3_barlow': #LRD + Replay + barlow
+        model, loss, optimizer = train_cassle_contrastive_v3_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, transform, transform_prime, device, args)    
     else:
         raise Exception('Approach does not exist in this repo')
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
-    lin_epoch = 100
+    lin_epoch = 200
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler

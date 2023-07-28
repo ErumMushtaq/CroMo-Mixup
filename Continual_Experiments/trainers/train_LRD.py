@@ -170,7 +170,7 @@ def train_LRD_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
 
         oldModel = deepcopy(model.encoder.backbone)  # save t-1 model
         oldModel.to(device)
-        oldModel.eval()
+        oldModel.train()
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
@@ -183,7 +183,7 @@ def train_LRD_infomax(model, train_data_loaders, knn_train_data_loaders, test_da
         #file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)
         #+"-CS"+str(args.class_split) + 'task_' + str(task_id) + 'lambdap_' + str(args.lambdap) + 'lambda_norm_' + str(args.lambda_norm) + 'same_lr_' + str(args.same_lr) + 'norm_' + str(normalization) + 'ws_' + str(args.weight_standard) + '.pth.tar' 
         
-        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) +  '_subspace_' + str(args.subspace_rate) + '.pth.tar'
 
         # save your encoder network
         torch.save({
@@ -244,8 +244,8 @@ def train_LRD_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
                     f1_projected = f1 @ Q @ Q.T  
                     f2_projected = f2 @ Q @ Q.T
 
-                    f1 = f1 #- f1_projected
-                    f2 = f2 #- f2_projected
+                    f1 = f1 #- f1_projected #remove that part
+                    f2 = f2 #- f2_projected #remove that part
 
                     norm_loss_1 = torch.norm(f1_projected,dim =1) / (torch.norm(f1,dim =1) + 0.0000001) 
                     norm_loss_1 = torch.mean(norm_loss_1)
@@ -261,14 +261,17 @@ def train_LRD_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
                 z1 = model.encoder.projector(f1) # NxC
                 z2 = model.encoder.projector(f2) # NxC
 
-                z1 = F.normalize(z1, p=2)
-                z2 = F.normalize(z2, p=2)
+                #z1 = F.normalize(z1, p=2)#remove that part
+                #z2 = F.normalize(z2, p=2)#remove that part
 
                 loss_task = cross_loss(z1, z2) 
 
                 if task_id != 0: #do Distillation
                     f1Old = oldModel(x1).squeeze().detach()
                     f2Old = oldModel(x2).squeeze().detach()
+
+                    f1Old = f1Old @ Q @ Q.T  
+                    f2Old = f2Old @ Q @ Q.T
 
                     lossKD = (-(criterion(f1_projected, f1Old).mean() * 0.5
                                             + criterion(f2_projected, f2Old).mean() * 0.5) )
@@ -309,7 +312,7 @@ def train_LRD_barlow(model, train_data_loaders, knn_train_data_loaders, test_dat
 
         oldModel = deepcopy(model.encoder.backbone)  # save t-1 model
         oldModel.to(device)
-        oldModel.eval()
+        oldModel = oldModel.train()
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
