@@ -142,3 +142,4 @@ data/cifar10/cifar-10-batches-py/
 
 *.tar.gz
 */data/
+*/notebooks/
