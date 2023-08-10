@@ -10,11 +10,10 @@ import torchvision
 
 import torch.nn as nn
 from tqdm import tqdm
-
+from itertools import cycle
 
 from torch.utils.data import DataLoader
 from dataloaders.dataset import TensorDataset
-
 
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
@@ -408,7 +407,7 @@ def store_samples(loader, task_id, num):
     labels = torch.ones(num,dtype=torch.long) * task_id 
     return torch.Tensor(x_data[select]), labels
 
-def finetune_contrastive_v3(net, data_loader, old_samples, old_labels, new_batch_size, task_id, optimizer, epochs, device):
+def finetune_contrastive_v3(net, data_loader, old_samples, old_labels, new_batch_size, task_id, optimizer, epochs, device,scheduler):
     
     data_normalize_mean = (0.5071, 0.4865, 0.4409)
     data_normalize_std = (0.2673, 0.2564, 0.2762)
@@ -419,27 +418,21 @@ def finetune_contrastive_v3(net, data_loader, old_samples, old_labels, new_batch
             transforms.Normalize(data_normalize_mean, data_normalize_std),
         ] )
 
-    old_data_loader = DataLoader(TensorDataset(old_samples,old_labels,transform=transform_linear), batch_size=new_batch_size, shuffle=True, 
+    old_data_loader = DataLoader(TensorDataset(old_samples,old_labels,transform=transform_linear), batch_size=new_batch_size*task_id, shuffle=True, 
                             num_workers = 5, pin_memory=True)
     current_data_loader = DataLoader(data_loader.dataset, batch_size=new_batch_size, shuffle=True, num_workers = 5, pin_memory=True)
     
     for epoch in range(1, epochs+1):
         net.eval() # for not update batchnorm 
-        total_num, train_bar = 0, tqdm(current_data_loader)
-        linear_loss = 0.0
+        total_num = 0
+        total_loss = 0.0
 
-        dataloader_iterator = iter(old_data_loader)
-        for x1, _ in train_bar:
-            try:
-                x2, y2 = next(dataloader_iterator)
-            except StopIteration:
-                dataloader_iterator = iter(old_data_loader)
-                x2, y2 = next(dataloader_iterator)
-
+        train_bar = tqdm(zip(cycle(old_data_loader), current_data_loader))
+        for (data_old, (x1, _)) in train_bar:
             x1 = x1[0]
             y1 = torch.ones(x1.shape[0],dtype=torch.long) * task_id
-            x_all = torch.cat((x1, x2), dim=0)
-            y_all = torch.cat((y1, y2), dim=0)
+            x_all = torch.cat((x1, data_old[0]), dim=0)
+            y_all = torch.cat((y1, data_old[1]), dim=0)
             x_all = x_all.to(device)
             y_all = y_all.to(device)
 
@@ -462,11 +455,15 @@ def finetune_contrastive_v3(net, data_loader, old_samples, old_labels, new_batch
             # Accumulating number of examples, losses and correct predictions
             batchsize_bc = features.shape[0]
             total_num += batchsize_bc
-            linear_loss += linear_loss.item() * batchsize_bc
+            total_loss += linear_loss.item() * batchsize_bc
 
-            train_bar.set_description('Lin.Train Epoch: [{}] Loss: {:.4f}'.format(epoch, linear_loss / total_num))
-        wandb.log({f" Contrastive loss {task_id}": linear_loss / total_num, " Epoch ": epoch})
-    return linear_loss/total_num
+            train_bar.set_description('Lin.Train Epoch: [{}] Loss: {:.4f}'.format(epoch, total_loss / total_num))
+
+        if scheduler is not None:
+            scheduler.step()
+
+        wandb.log({f" Contrastive loss {task_id}": total_loss / total_num, " Epoch ": epoch})
+    return total_loss/total_num
 
 def train_cassle_contrastive_v3_barlow(model, train_data_loaders_generic, knn_train_data_loaders, test_data_loaders, transform, transform_prime, device, args):
     
@@ -564,10 +561,12 @@ def train_cassle_contrastive_v3_barlow(model, train_data_loaders_generic, knn_tr
             param.requires_grad = False
 
         if task_id != 0:
+            lin_epoch = 80
             loader.dataset.transforms = [transform_linear]
             model.contrastive_projector = contrastive_projector 
             lin_optimizer = torch.optim.SGD(model.parameters(), 1e-3, momentum=0.9, weight_decay=0) 
-            finetune_contrastive_v3(model, loader, x_old, y_old, 64, task_id, lin_optimizer, 10, device)
+            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) 
+            finetune_contrastive_v3(model, loader, x_old, y_old, 32, task_id, lin_optimizer, lin_epoch, device,lin_scheduler)
  
         loader.dataset.transforms = None
         x_samp, y_samp = store_samples(loader, task_id, 50)
