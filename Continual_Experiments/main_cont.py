@@ -38,6 +38,7 @@ from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax
 from trainers.train_dist_ering import train_dist_ering_infomax
+from trainers.train_cassle_ering import train_cassle_barlow_ering
 
 
 # from torchsummary import summary
@@ -93,7 +94,7 @@ def add_args(parser):
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
     parser.add_argument('--min_lr', type=float, default=0.00)
 
-    parser.add_argument('--lambdap', type=float, default=2.0)
+    parser.add_argument('--lambdap', type=float, default=2.0)# should it be 1?
     parser.add_argument('--appr', type=str, default='basic', help='Approach name, basic, PFR') #approach
 
     parser.add_argument('--knn_report_freq', type=int, default=10)
@@ -137,6 +138,10 @@ def add_args(parser):
 
     parser.add_argument("--normalize_on", action="store_true", help='l2 normalization after projection MLP')
 
+    #Cassle+ering parameters
+    parser.add_argument('--cur_dist', type=int, default=1)
+    parser.add_argument('--old_dist', type=int, default=1)
+    parser.add_argument('--start_chkpt', type=int, default=1)
     
     args = parser.parse_args()
     return args
@@ -326,6 +331,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_contrastive_v2_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, transform, transform_prime, device, args)  
     elif args.appr == 'cassle_contrastive_v3_barlow': #LRD + Replay + barlow
         model, loss, optimizer = train_cassle_contrastive_v3_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, transform, transform_prime, device, args)    
+    elif args.appr == 'cassle_ering_barlow': #cassle + ering + barlow
+        model, loss, optimizer = train_cassle_barlow_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     else:
         raise Exception('Approach does not exist in this repo')
 
