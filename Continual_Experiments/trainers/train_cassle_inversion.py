@@ -6,7 +6,6 @@ from copy import deepcopy
 import torch.nn.functional as F
 
 import torch.nn as nn
-from itertools import cycle
 
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
@@ -17,10 +16,8 @@ from utils.lars import LARS
 
 from models.linear_classifer import LinearClassifier
 from torch.utils.data import DataLoader
-from dataloaders.dataset import TensorDataset, SimSiam_Dataset
-import torchvision.transforms as transforms
+from dataloaders.dataset import TensorDataset
 from tqdm import tqdm
-
 def correct_top_k(outputs, targets, top_k=(1,5)):
     with torch.no_grad():
         prediction = torch.argsort(outputs, dim=-1, descending=True)
@@ -128,13 +125,6 @@ def linear_evaluation(net, data_loaders,test_data_loaders,train_optimizer,classi
     return test_loss, test_acc1, classifier
 
 
-def store_samples(loader, task_id, num):
-    x_data = loader.dataset.train_data
-    select = np.random.randint(0,x_data.shape[0],num)
-    labels = torch.ones(num,dtype=torch.long) * task_id 
-    return torch.Tensor(x_data[select]), labels
-
-
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
     y = F.normalize(y, dim=-1, p=2)
@@ -167,47 +157,85 @@ class Predictor(nn.Module):
         out = self.fc2(out)
         return out
     
-def process_batch(x1, x2, model, cross_loss, optimizer, epoch_loss, args):
-    z1,z2 = model(x1, x2)
-    loss =  cross_loss(z1, z2)
-    epoch_loss.append(loss.item())
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step() 
 
-    return model, optimizer
 
-def process_batch_ering(x1, x2, x1_old, x2_old, model, cross_loss, oldModel, optimizer, epoch_loss, args):
-    x1 = torch.cat((x1,x1_old))
-    x2 = torch.cat((x2,x2_old))
+def generate_feature(model, target, target_mean, device, alpha=150, learning_rate=1e4):
+    aim_flatten = torch.randn((1, 64, 32, 33)).to(device)
+    aim_flatten.requires_grad = True
 
-    z1,z2 = model(x1, x2)
+    criterion = nn.CosineSimilarity(dim=1)
 
-    loss_new = cross_loss(z1, z2) 
-    loss = loss_new
-    
-    lossKD = 0.0
-    
-    f1Old = oldModel(x1).squeeze().detach()
-    f2Old = oldModel(x2).squeeze().detach()
-    p2_1 = model.temporal_projector(z1)
-    p2_2 = model.temporal_projector(z2)
+    costn_1 = 1
+    b = 0
+    beta = 20
+    gama = -((1-target_mean) * torch.rand(1).to(device) + target_mean)
+    # print(gama)
 
-    lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
-                            + cross_loss(p2_2, f2Old).mean() * 0.5) )
-    loss += lossKD 
+    model.eval()
+    for i in range(alpha):
+        aim_flatten = aim_flatten.detach()
+        aim_flatten.requires_grad = True
+        out = model.encoder.backbone[3:](aim_flatten).reshape((1, -1))
+        if aim_flatten.grad is not None:
+            aim_flatten.grad.zero_()
+        cost = -criterion(out, target)
+        cost.backward()
+        aim_grad = aim_flatten.grad
+        aim_flatten = aim_flatten - learning_rate * aim_grad
+        # aim_flatten = Process(aim_flatten)
+        # aim_flatten = torch.clamp(aim_flatten.detach(), 0, 1)
+        # print(i, cost.item())
+        if cost >= costn_1:
+            b = b + 1
+            if b > beta:
+                break
+        else:
+            b = 0
+        costn_1 = cost
+        if cost < gama:
+            break
+    # print(i, cost.item()) 
+    return aim_flatten.detach().cpu()
 
-    
-    
-    epoch_loss.append(loss.item())
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step() 
 
-    return model, optimizer
-    
+def inversion(loader, model, device, task_id):
+    print("Generating synthetic features..")
+    features = torch.Tensor([])
+    targets = torch.Tensor([])
+    for c in range(20):
+        t = int(task_id*20 + c)
+        outs = torch.Tensor([])
+        model.eval()
+        for x, _, y in loader:
+            out = model(x[y==t].to(device)).detach().cpu()
+            if len(out.shape) == 1:
+                out = out.reshape(1, -1)
+            outs = torch.cat((outs, out), dim=0)
+        target = outs.mean(dim=0).reshape((1, -1))
+        target_mean = nn.CosineSimilarity(dim=1)(outs, target).mean()
+        proj_target = model.encoder.projector(target.to(device)).detach().cpu()
+        target = target.to(device)
 
-def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime):
+        for _ in range(15):
+            feat = generate_feature(model, target, target_mean, device, alpha=150, learning_rate=1e4)
+            features = torch.cat((features, feat), dim=0)
+            targets = torch.cat((targets, proj_target), dim=0)
+    print("Generation done!")
+    return features, targets
+
+def get_samples(feature_list, target_list):
+    num_samples = 32
+    features = torch.Tensor([])
+    targets = torch.Tensor([])
+    for i in range(len(feature_list)-1, -1, -1):
+        indices = np.random.choice(feature_list[i].shape[0],size=num_samples, replace=False)
+        features = torch.cat((features, feature_list[i][indices]), dim=0)
+        targets = torch.cat((targets, target_list[i][indices]), dim=0)
+        # num_samples = min(8, int(num_samples/2))
+    return features, targets
+
+
+def train_cassle_barlow_inversion(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -216,13 +244,14 @@ def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders,
             nn.ReLU(),
             nn.Linear(args.proj_hidden, args.proj_out),
         ).to(device)
+    old_model = None
     criterion = nn.CosineSimilarity(dim=1)
     cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
 
-    x_old = torch.Tensor([])
-    y_old = torch.tensor([],dtype=torch.long)
-
-
+    # old_features = torch.Tensor([])
+    # old_targets = torch.Tensor([])
+    old_features = []
+    old_targets = []
     for task_id, loader in enumerate(train_data_loaders):
 
         if task_id == 0 and args.start_chkpt == 1:
@@ -230,6 +259,7 @@ def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders,
             model.load_state_dict(torch.load(model_path)['state_dict'])
             model.task_id = task_id
             epoch_counter = 500
+
         else:
             # Optimizer and Scheduler
             model.task_id = task_id
@@ -237,53 +267,61 @@ def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders,
             if task_id != 0 and args.same_lr != True:
                 init_lr = init_lr / 10
 
+            if task_id > 0:
+                for i, (name, param) in enumerate(model.named_parameters()):
+                    if i < 3:
+                        # print(i, name)
+                        param.requires_grad = False
+
             optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)  
+            # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
-    
-            # if task_id > 0:
-            #     old_data_loader = DataLoader(SimSiam_Dataset(x_old,y_old,transform, transform_prime), batch_size=32*task_id, shuffle=True, 
-            #                 num_workers = 5, pin_memory=True)
-                
+
             loss_ = []
             for epoch in range(args.epochs[task_id]):
                 start = time.time()
                 model.train()
                 epoch_loss = []
-                kd_loss_cur = []
-                kd_loss_old = []
-                loss1= []
-                loss2=[]
+                for x1, x2, y in loader:
+                    x1, x2 = x1.to(device), x2.to(device)
+                    z1,z2 = model(x1, x2)
+                    lossKD = 0.0
+                    
+                    if task_id != 0: #do Distillation
 
-                if task_id == 0:
-                    for x1, x2, _ in loader:
-                        x1, x2 = x1.to(device), x2.to(device)
-                        model, optimizer = process_batch(x1, x2, model, cross_loss, optimizer, epoch_loss, args)
-                else:
-                    # dataloader_iterator = iter(old_data_loader)
-                    # for cur_data in loader:
-                    #     try:
-                    #         old_data = next(dataloader_iterator)
-                    #     except StopIteration:
-                    #         dataloader_iterator = iter(old_data_loader)
-                    #         old_data = next(dataloader_iterator)
+                        # indices = np.random.randint(0,old_features.shape[0],min(32*task_id, 64))
+                        # old_inp = old_features[indices].to(device)
+                        # old_target = old_targets[indices].to(device)
+                        old_inp, old_target = get_samples(old_features, old_targets)
+                        old_inp = old_inp.to(device)
+                        old_inp_old = oldModel.backbone[3:](old_inp).squeeze()
+                        old_inp_old = oldModel.projector(old_inp_old).detach()
+                        old_inp_new = model.encoder.backbone[3:](old_inp).squeeze()
+                        old_inp_new = model.encoder.projector(old_inp_new)
+                        old_inp_new_t = model.temporal_projector(old_inp_new)
 
-                    # for old_data, cur_data in zip(cycle(old_data_loader), loader):
-                    for cur_data in loader:
-                        x1, x2, _ = cur_data
-                        x1, x2 = x1.to(device), x2.to(device)
+                        f1Old = oldModel(x1).squeeze().detach()
+                        f2Old = oldModel(x2).squeeze().detach()
+                        p2_1 = model.temporal_projector(z1)
+                        p2_2 = model.temporal_projector(z2)
 
-                        # x1_old, x2_old, _ = old_data
-                        # x1_old, x2_old, = None, None
-                        x1_old = torch.Tensor([])
-                        x2_old = torch.Tensor([])
-                        indices = np.random.randint(0,x_old.shape[0],16*task_id)
-                        for ind in indices:
-                            x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1])), dim=0)
-                            x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
-                        x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                        old_out = torch.cat((old_inp_old, f1Old, f2Old), dim=0)
+                        new_out = torch.cat((old_inp_new_t, p2_1, p2_2), dim=0)
+                        
+                        # lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
+                        #                     + cross_loss(p2_2, f2Old).mean() * 0.5) )
+                        lossKD = args.lambdap * cross_loss(old_out, new_out).mean() 
 
-                        model, optimizer = process_batch_ering(x1, x2, x1_old, x2_old, model, cross_loss, oldModel, optimizer, epoch_loss, args)
+                        z1 = torch.cat((z1, old_inp_new), dim=0)
+                        z2 = torch.cat((z2, old_target.to(device)), dim=0)
 
+                    loss =  cross_loss(z1, z2)
+                    loss += lossKD 
+                
+                    epoch_loss.append(loss.item())
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step() 
                 epoch_counter += 1
                 scheduler.step()
                 loss_.append(np.mean(epoch_loss))
@@ -294,10 +332,10 @@ def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders,
                     wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
                     for i, acc in enumerate(task_acc_arr):
                         wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
-                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time: {end-start:.1f}s | Loss: {np.mean(epoch_loss):.4f} | Knn:  {knn_acc*100:.2f}')
+                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
                     print(task_acc_arr)
                 else:
-                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time: {end-start:.1f}s | Loss: {np.mean(epoch_loss):.4f} ')
+                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
             
                 wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
                 wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
@@ -310,24 +348,26 @@ def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders,
                         'encoder': model.encoder.backbone.state_dict(),
                     }, file_name)
     
-
+            
         oldModel = deepcopy(model.encoder)  # save t-1 model
         oldModel.to(device)
         oldModel.train()
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
 
-        if task_id < len(train_data_loaders)-1:
-           lin_epoch = 100
-           num_class = np.sum(args.class_split[:task_id+1])
-           classifier = LinearClassifier(num_classes = num_class).to(device)
-           lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-           lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-           linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
+        old_f, old_t = inversion(loader, model, device, task_id)
+        old_features.append(old_f)
+        old_targets.append(old_t)
+        # old_features = torch.cat((old_features, old_f), dim=0)
+        # old_targets = torch.cat((old_targets, old_t), dim=0)
 
-        x_samp, y_samp = store_samples(loader, task_id, 30)
-        x_old = torch.cat((x_old, x_samp), dim=0)
-        y_old = torch.cat((y_old, y_samp), dim=0)
+        if task_id < len(train_data_loaders)-1:
+            lin_epoch = 100
+            num_class = np.sum(args.class_split[:task_id+1])
+            classifier = LinearClassifier(num_classes = num_class).to(device)
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+            linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
 
     return model, loss_, optimizer
 

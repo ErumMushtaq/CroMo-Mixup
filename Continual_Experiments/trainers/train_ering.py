@@ -7,7 +7,10 @@ import torch.nn.functional as F
 
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
-from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss
+from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss, BarlowTwinsLoss
+from utils.lars import LARS
+
+
 def update_memory(memory, dataloader, size):
     indices = np.random.choice(len(dataloader.dataset), size=size, replace=False)
     x, _ =  dataloader.dataset[indices]
@@ -52,17 +55,26 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, train
                 loss_mem = 0.0
                 len_mem = 0.0
                 if task_id > 0:
-                    indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
-                    x = memory[indices].to(device)
-                    x1, x2 = transform(x), transform_prime(x)
+                    # indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
+                    # x = memory[indices].to(device)
+                    # x1, x2 = transform(x), transform_prime(x)
 
-                    z1,z2,p1,p2 = model(x1, x2)
+                    x1_old = torch.Tensor([])
+                    x2_old = torch.Tensor([])
+                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    for ind in indices:
+                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+
+                    z1,z2,p1,p2 = model(x1_old, x2_old)
                     loss_one = loss_fn(p1, z2.detach())
                     loss_two = loss_fn(p2, z1.detach())
                     loss = 0.5*loss_one + 0.5*loss_two
                     loss_mem = loss.mean()
 
-                    len_mem = args.bsize
+                    len_mem = min(32*task_id, len(memory))
                     epoch_loss_mem.append(loss_mem.item())
 
                 loss = loss_org*len_org + loss_mem*len_mem
@@ -133,12 +145,20 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
                 loss_mem = torch.tensor(0)
                 len_mem = 0.0
                 if task_id > 0:                    
-                    indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
-                    x = memory[indices].to(device)
-                    xx1, xx2 = transform(x), transform_prime(x)
+                    # indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
+                    # x = memory[indices].to(device)
+                    # xx1, xx2 = transform(x), transform_prime(x)
 
-                    x1 = torch.cat([x1, xx1], dim=0)
-                    x2 = torch.cat([x2, xx2], dim=0)
+                    x1_old = torch.Tensor([])
+                    x2_old = torch.Tensor([])
+                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    for ind in indices:
+                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+                    x1 = torch.cat([x1, x1_old], dim=0)
+                    x2 = torch.cat([x2, x2_old], dim=0)
 
                 z1,z2 = model(x1, x2)
                 z1 = F.normalize(z1, p=2)
@@ -177,6 +197,82 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
             wandb.log({" Average Current Task Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" Average Total Loss ": np.mean(total_loss), " Epoch ": epoch_counter})  
             wandb.log({" Average Mem Loss ": np.mean(epoch_loss_mem), " Epoch ": epoch_counter})  
+            wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
+
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)
+        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+
+        # save your encoder network
+        torch.save({
+                        'state_dict': model.state_dict(),
+                        'optimizer' : optimizer.state_dict(),
+                        'encoder': model.encoder.backbone.state_dict(),
+                    }, file_name)
+
+    return model, loss_, optimizer
+
+
+def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
+    epoch_counter = 0
+    memory = torch.Tensor()
+    for task_id, loader in enumerate(train_data_loaders):
+        # Optimizer and Scheduler
+        
+        init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
+        if task_id != 0:
+            init_lr = init_lr / 10
+        
+        optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)
+        # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
+        # scheduler: adjut larnig rate: => https://github.com/facebookresearch/barlowtwins/blob/8e8d284ca0bc02f88b92328e53f9b901e86b4a3c/main.py#L155
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
+        cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
+
+        loss_ = []
+        for epoch in range(args.epochs[task_id]):
+            start = time.time()
+            model.train()
+            epoch_loss = []
+            for x1, x2, y in loader:   
+                optimizer.zero_grad()
+                x1, x2 = x1.to(device), x2.to(device)
+
+                if task_id > 0:                    
+                    # indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
+                    # x = memory[indices].to(device)
+                    # xx1, xx2 = transform(x), transform_prime(x)
+
+                    x1_old = torch.Tensor([])
+                    x2_old = torch.Tensor([])
+                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    for ind in indices:
+                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+                    x1 = torch.cat([x1, x1_old], dim=0)
+                    x2 = torch.cat([x2, x2_old], dim=0)
+
+                z1,z2 = model(x1, x2)
+                loss =  cross_loss(z1, z2)
+                epoch_loss.append(loss.item())
+                loss.backward()
+                optimizer.step()
+            epoch_counter += 1
+            scheduler.step()
+            loss_.append(np.mean(epoch_loss))
+            end = time.time()
+            if (epoch+1) % args.knn_report_freq == 0:
+                knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
+                wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
+                for i, acc in enumerate(task_acc_arr):
+                    wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
+                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
+                print(task_acc_arr)
+            else:
+                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
+        
+            wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
         memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)

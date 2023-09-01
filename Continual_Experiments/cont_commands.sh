@@ -96,6 +96,7 @@ python3 main_cont.py -cs 25,25,25,25 -e 500,500,500,500 --dataset cifar100 --lam
 # Ering + Infomax Experiments
 python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 5 --appr 'ering_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --lambdap 10.0 --bsize 200 --msize 300 
 
+
 #Ering + PFR + infomax 
 python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.0 --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 7 --appr 'PFR_ering_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --lambdap 10.0 --bsize 64 --msize 150
 
@@ -174,7 +175,8 @@ python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar10
 python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'cassle_contrastive_v1_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr 
 python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 5 --appr 'cassle_contrastive_v2_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr 
 python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'cassle_contrastive_v3_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr
-python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 7 --appr 'cassle_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr  
+
+python3 main_cont.py -cs 20,20,20,20,20 -e 750,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 1 --appr 'cassle_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr  
 
 
 
@@ -234,11 +236,43 @@ python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 350,350,350,350,350,35
 
 
 python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 350,350,350,350,350,350,350,350,350,350 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 3 --appr 'LRD_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --subspace_rate 0.97 --lambdap 10.0  --same_lr
-python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 350,350,350,350,350,350,350,350,350,350 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'cassle_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr
+
+
+python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 0 --appr 'cassle_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr --lambdap 1.0
 
 
 
 #Cassle+Ering+Barlow CIfar100
 python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 0 --appr 'cassle_ering_barlow' --pretrain_base_lr 0.3 --pretrain_batch_size 256  --same_lr  --cur_dist 1 --old_dist 1 --lambdap 1.0  --start_chkpt 1
+python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 350,350,350,350,350,350,350,350,350,350 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 1 --appr 'cassle_ering_barlow' --pretrain_base_lr 0.3 --pretrain_batch_size 256  --same_lr  --cur_dist 1 --old_dist 1 --lambdap 1.0  --start_chkpt 0
+
+
+
+#cassle noise
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 1 --appr 'cassle_noise_barlow' --pretrain_base_lr 0.30 --pretrain_batch_size 256  --same_lr --lambdap 1.0 --cross_lambda 1.0
  
 
+#Cassle+Inversion+Barlow CIfar100
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'cassle_barlow_inversion' --pretrain_base_lr 0.3 --pretrain_batch_size 256  --same_lr  --lambdap 1.0  --start_chkpt 1
+ 
+
+
+ #cassle linear
+python3 main_cont.py -cs 20,20,20,20,20 -e 750,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 5 --appr 'cassle_linear_barlow' --pretrain_base_lr 0.10 --pretrain_batch_size 256  --same_lr --lambdap 1.0
+
+
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 1 --appr 'cassle_linear_barlow' --pretrain_base_lr 0.05 --pretrain_batch_size 256  --same_lr --lambdap 1.0
+
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 3 --appr 'cassle_linear_barlow' --pretrain_base_lr 0.15 --pretrain_batch_size 256  --same_lr --lambdap 1.0
+
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 2 --appr 'cassle_linear_barlow' --pretrain_base_lr 0.20 --pretrain_batch_size 256  --same_lr --lambdap 1.0
+
+
+python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 600,350,350,350,350,350,350,350,350,350  --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'cassle_linear_barlow' --pretrain_base_lr 0.10 --pretrain_batch_size 256  --same_lr --lambdap 1.0
+
+
+#Ering + Balow Twins
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 3 --appr 'ering_barlow' --pretrain_base_lr 0.3 --pretrain_batch_size 256 --msize 60 
+
+ #cassle linear
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 0 --appr 'cassle_linear_barlow2' --pretrain_base_lr 0.10 --pretrain_batch_size 256  --same_lr --lambdap 1.0

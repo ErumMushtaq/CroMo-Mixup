@@ -27,6 +27,11 @@ from trainers.train_barlow import train_barlow
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
 from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax
 
+from trainers.train_cassle_noise import train_cassle_noise_barlow
+
+from trainers.train_cassle_linear import train_cassle_linear_barlow
+from trainers.train_cassle_linear2 import train_cassle_linear_barlow2
+
 from trainers.train_cassle_contrastive import train_cassle_contrastive_v1_barlow,train_cassle_contrastive_v2_barlow, train_cassle_contrastive_v3_barlow
 
 from trainers.train_PFR_ering import train_PFR_ering_infomax
@@ -36,9 +41,10 @@ from trainers.train_LRD_cross import  train_LRD_cross_barlow
 from trainers.train_LRD_replay import train_LRD_replay_infomax, train_LRD_replay_barlow
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
-from trainers.train_ering import train_ering_simsiam,train_ering_infomax
+from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow
 from trainers.train_dist_ering import train_dist_ering_infomax
 from trainers.train_cassle_ering import train_cassle_barlow_ering
+from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 
 
 # from torchsummary import summary
@@ -125,7 +131,7 @@ def add_args(parser):
 
     #Ering parameters
     parser.add_argument('--bsize', type=int, default=250, help='For Ering, number of samples that are sampled for each batch')
-    parser.add_argument('--msize', type=int, default=300, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
+    parser.add_argument('--msize', type=int, default=60, help='For Ering, number of samples that are stored for each task (memory sample for each task)')
 
     #Architecture parameters
     parser.add_argument('--proj_hidden', type=int, default=2048)
@@ -142,6 +148,8 @@ def add_args(parser):
     parser.add_argument('--cur_dist', type=int, default=1)
     parser.add_argument('--old_dist', type=int, default=1)
     parser.add_argument('--start_chkpt', type=int, default=1)
+
+    parser.add_argument('--cross_lambda', type=float, default=1.0)
     
     args = parser.parse_args()
     return args
@@ -173,7 +181,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                #mode="disabled",
+                # mode="disabled",
                 config=args,
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
@@ -296,7 +304,15 @@ if __name__ == "__main__":
     elif args.appr == 'PFR_barlow': #CVPR Workshop paper
         model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'cassle_barlow': #CVPR main paper
-        model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
+        model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_linear_barlow': #CVPR main paper
+        model, loss, optimizer = train_cassle_linear_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_linear_barlow2': #CVPR main paper
+        model, loss, optimizer = train_cassle_linear_barlow2(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_barlow_inversion': #CVPR main paper
+        model, loss, optimizer = train_cassle_barlow_inversion(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_noise_barlow': #CVPR main paper
+        model, loss, optimizer = train_cassle_noise_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, transform, transform_prime, device, args)
     elif args.appr == 'cassle_simsiam': #CVPR main paper
         model, loss, optimizer = train_cassle_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'cassle_infomax': #CVPR main paper
@@ -319,6 +335,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simsiam': #ERING
         model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
+    elif args.appr == 'ering_barlow': #ERING
+        model, loss, optimizer = train_ering_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'LRD_replay_infomax': #LRD + Replay + infomax
         model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
     elif args.appr == 'LRD_replay_barlow': #LRD + Replay + barlow
