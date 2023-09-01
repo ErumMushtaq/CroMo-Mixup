@@ -276,3 +276,7 @@ python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar10
 
  #cassle linear
 python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 0 --appr 'cassle_linear_barlow2' --pretrain_base_lr 0.10 --pretrain_batch_size 256  --same_lr --lambdap 1.0
+
+
+ #cassle cosine+linear
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 4 --appr 'cassle_cosine_barlow' --pretrain_base_lr 0.30 --pretrain_batch_size 256  --same_lr --lambdap 1.0 --lambdacs 1.0
