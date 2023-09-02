@@ -171,7 +171,7 @@ def get_cone(loader, model, device, quantile=0.05):
     return mean, cs
 
 
-def train_cassle_cosine_barlow(model, train_data_loaders_generic, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear,  transform, transform_prime, device, args):
+def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear,  transform, transform_prime, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -183,6 +183,7 @@ def train_cassle_cosine_barlow(model, train_data_loaders_generic, knn_train_data
     old_model = None
     criterion = nn.CosineSimilarity(dim=1)
     cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
+    old_linear = None
 
     cone_mean = []
     cone_cs = []
@@ -211,14 +212,17 @@ def train_cassle_cosine_barlow(model, train_data_loaders_generic, knn_train_data
             if task_id != 0 and args.same_lr != True:
                 init_lr = init_lr / 10
 
+            if task_id != 0: 
+                linear = nn.Sequential(nn.Linear(512, 512, bias=True).to(device),nn.BatchNorm1d(512,affine=True)).to(device)#affine true or false don't remember
+                model.linear = linear
+
+
             optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)  
             # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
 
             loss_ = []
-
             loader.dataset.transforms = [transform, transform_prime, transform_linear]
-
             for epoch in range(args.epochs[task_id]):
                 start = time.time()
                 model.train()
@@ -226,41 +230,77 @@ def train_cassle_cosine_barlow(model, train_data_loaders_generic, knn_train_data
                 coss_loss = []
                 for x, _ in loader:
                     x1, x2, x3 = x[0], x[1], x[2]
-
                     x1, x2, x3 = x1.to(device), x2.to(device), x3.to(device)
-                    m1 = model.encoder.backbone(x1).squeeze()
-                    m2 = model.encoder.backbone(x2).squeeze()
-                    z1 = model.encoder.projector(m1)
-                    z2 = model.encoder.projector(m2)
-                    # z1,z2 = model(x1, x2)
-                    loss =  cross_loss(z1, z2)
 
-                    m3 = model.encoder.backbone(x3).squeeze()
-                    
+                    if  task_id == 0: 
+                        m1 = model.encoder.backbone(x1).squeeze()
+                        m2 = model.encoder.backbone(x2).squeeze()
+                        z1 = model.encoder.projector(m1)
+                        z2 = model.encoder.projector(m2)
+                    else:
+                        m1 = model.encoder.backbone(x1).squeeze()
+                        m2 = model.encoder.backbone(x2).squeeze()
+
+                        z1 = model.linear(m1)
+                        z2 = model.linear(m2)
+
+                        z1 = model.encoder.projector(z1)
+                        z2 = model.encoder.projector(z2)
+
+                        m3 = model.encoder.backbone(x3).squeeze()
+                   
+                    loss =  cross_loss(z1, z2)
                     
                     if task_id != 0: #do Distillation
-                        f1Old = oldModel(x1).squeeze().detach()
-                        f2Old = oldModel(x2).squeeze().detach()
-                        p2_1 = model.temporal_projector(z1)
-                        p2_2 = model.temporal_projector(z2)
-                        
-                        #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
 
-                        lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
-                                            + cross_loss(p2_2, f2Old).mean() * 0.5) )
-                        loss += lossKD 
-                        
+                        if task_id != 1:
+                            f1Old = oldModel.backbone(x1).squeeze()
+                            f2Old = oldModel.backbone(x2).squeeze()
+
+                            f1Old = old_linear(f1Old)
+                            f2Old = old_linear(f2Old)
+
+                            f1Old = oldModel.projector(f1Old)
+                            f2Old = oldModel.projector(f2Old)
+
+
+                            z1_kd = model.encoder.projector(old_linear(m1))
+                            z2_kd = model.encoder.projector(old_linear(m2))
+                            
+                            p2_1 = model.temporal_projector(z1_kd)
+                            p2_2 = model.temporal_projector(z2_kd)
+                            
+                            
+                            lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
+                                                + cross_loss(p2_2, f2Old).mean() * 0.5) )
+                            loss += lossKD
+
+                        else:
+                            f1Old = oldModel(x1).squeeze().detach()
+                            f2Old = oldModel(x2).squeeze().detach()
+                            p2_1 = model.temporal_projector(z1)
+                            p2_2 = model.temporal_projector(z2)
+                            
+                            #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
+
+                            lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
+                                                + cross_loss(p2_2, f2Old).mean() * 0.5) )
+                            loss += lossKD 
+
+
                         cossine_loss = 0
                         for ind in range(len(cone_cs)):
                             scores = torch.cosine_similarity(cone_mean[ind].to(device), m3)
                             cossine_loss += torch.max(torch.tensor(0), scores-cone_cs[ind]).mean()
 
                         loss += args.lambdacs * cossine_loss
+
                     else:
                         cossine_loss = torch.tensor(0)
                     
                     epoch_loss.append(loss.item())
                     coss_loss.append(cossine_loss.item())
+                    
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step() 
@@ -298,6 +338,12 @@ def train_cassle_cosine_barlow(model, train_data_loaders_generic, knn_train_data
         oldModel.train()
         for param in oldModel.parameters(): #Freeze old model
             param.requires_grad = False
+
+        if task_id != 0:
+            old_linear = deepcopy(model.linear)
+            old_linear.to(device)
+            for param in old_linear.parameters(): #Freeze linear model
+                param.requires_grad = False
 
         mean, cs = get_cone(train_data_loaders_linear[task_id], model, device, quantile=0.05)
         cone_mean.append(mean)
