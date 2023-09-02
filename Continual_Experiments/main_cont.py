@@ -187,7 +187,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                #mode="disabled",
+                mode="disabled",
                 config=args,
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
@@ -251,23 +251,10 @@ if __name__ == "__main__":
     print("Creating Dataloaders..")
 
     batch_size = args.pretrain_batch_size
-    # ## To create batch size split 
-    # batch_size = []
-    
-    # for k in range(len(args.class_split)):
-    #     if 'ering' in args.appr:
-    #         if k == 0: # first task
-    #             batch_size.append(args.pretrain_batch_size)
-    #         else:
-    #             batch_size.append(args.pretrain_batch_size - args.bsize)
-    #     else:
-    #         batch_size.append(args.pretrain_batch_size)
 
     # #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
-                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
     ##!!! Make these model arguments
@@ -286,11 +273,6 @@ if __name__ == "__main__":
         proj_out = args.proj_out
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         model = Siamese(encoder)
-        # print(model)
-        # # Infomax model
-        # model2 = CovModel(args)
-        # print(model2)
-        # exit()
         model.to(device) #automatically detects from model
 
     #Training
@@ -365,6 +347,8 @@ if __name__ == "__main__":
         raise Exception('Approach does not exist in this repo')
 
     #Test Linear classification acc
+    _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
+                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
     print("Starting Classifier Training..")
     lin_epoch = 200
     if args.dataset == 'cifar10':
@@ -383,8 +367,8 @@ if __name__ == "__main__":
                                                                     lin_scheduler, epochs=lin_epoch, device=device) 
 
     #T-SNE Plot
-    print("Starting T-SNE Plot..")
-    get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
+    # print("Starting T-SNE Plot..")
+    # get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
 
 
     file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 

@@ -163,7 +163,8 @@ def get_cone(loader, model, device, quantile=0.05):
     features = torch.Tensor([])
     model.eval()
     for x, _ in loader:
-        out = model.encoder.backbone(x.to(device)).detach().cpu().squeeze()
+        out = model.encoder.backbone(x.to(device)).squeeze()
+        out = model.encoder.projector(out).detach().cpu()
         features = torch.cat((features, out), dim=0)
     mean = torch.mean(features, dim=0)
     scores = torch.cosine_similarity(mean, features)
@@ -222,32 +223,27 @@ def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_tra
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
 
             loss_ = []
-            loader.dataset.transforms = [transform, transform_prime, transform_linear]
+            loader.dataset.transforms = [transform, transform_prime]
             for epoch in range(args.epochs[task_id]):
                 start = time.time()
                 model.train()
                 epoch_loss = []
                 coss_loss = []
                 for x, _ in loader:
-                    x1, x2, x3 = x[0], x[1], x[2]
-                    x1, x2, x3 = x1.to(device), x2.to(device), x3.to(device)
+                    x1, x2 = x[0], x[1]
+                    x1, x2 = x1.to(device), x2.to(device)
 
                     if  task_id == 0: 
-                        m1 = model.encoder.backbone(x1).squeeze()
-                        m2 = model.encoder.backbone(x2).squeeze()
-                        z1 = model.encoder.projector(m1)
-                        z2 = model.encoder.projector(m2)
+                        z1, z2 = model(x1, x2)
                     else:
-                        m1 = model.encoder.backbone(x1).squeeze()
-                        m2 = model.encoder.backbone(x2).squeeze()
+                        z1 = model.encoder.backbone(x1).squeeze()
+                        z2 = model.encoder.backbone(x2).squeeze()
 
-                        z1 = model.linear(m1)
-                        z2 = model.linear(m2)
+                        z1 = model.linear(z1)
+                        z2 = model.linear(z2)
 
                         z1 = model.encoder.projector(z1)
                         z2 = model.encoder.projector(z2)
-
-                        m3 = model.encoder.backbone(x3).squeeze()
                    
                     loss =  cross_loss(z1, z2)
                     
@@ -290,8 +286,10 @@ def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_tra
 
                         cossine_loss = 0
                         for ind in range(len(cone_cs)):
-                            scores = torch.cosine_similarity(cone_mean[ind].to(device), m3)
-                            cossine_loss += torch.max(torch.tensor(0), scores-cone_cs[ind]).mean()
+                            scores1 = torch.cosine_similarity(cone_mean[ind].to(device), z1)
+                            scores2 = torch.cosine_similarity(cone_mean[ind].to(device), z2)
+                            cossine_loss += (0.5*torch.max(torch.tensor(0), scores1-cone_cs[ind]).mean()
+                                                + 0.5*torch.max(torch.tensor(0), scores2-cone_cs[ind]).mean())
 
                         loss += args.lambdacs * cossine_loss
 
