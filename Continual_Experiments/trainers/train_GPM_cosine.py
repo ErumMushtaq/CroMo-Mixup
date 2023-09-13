@@ -1,24 +1,26 @@
 import time
 import wandb
 import torch
+import pickle 
 import numpy as np
-from copy import deepcopy
-import torch.nn.functional as F
-
 import torch.nn as nn
+import torch.nn.functional as F
+from functools import reduce
+import torchvision.transforms as T
 
-from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
 from utils.eval_metrics import Knn_Validation_cont
-from copy import deepcopy
-from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss, BarlowTwinsLoss
+from loss import BarlowTwinsLoss
 from utils.lars import LARS
-#https://github.com/DonkeyShot21/cassle/blob/main/cassle/distillers/predictive_mse.py
 
 from models.linear_classifer import LinearClassifier
 from torch.utils.data import DataLoader
 from dataloaders.dataset import TensorDataset
 from tqdm import tqdm
-import torchvision.transforms as transforms
+
+def loss_fn(x, y):
+    x = F.normalize(x, dim=-1, p=2)
+    y = F.normalize(y, dim=-1, p=2)
+    return  - (x * y).sum(dim=-1).mean()
 
 def correct_top_k(outputs, targets, top_k=(1,5)):
     with torch.no_grad():
@@ -127,37 +129,90 @@ def linear_evaluation(net, data_loaders,test_data_loaders,train_optimizer,classi
     return test_loss, test_acc1, classifier
 
 
-def loss_fn(x, y):
-    x = F.normalize(x, dim=-1, p=2)
-    y = F.normalize(y, dim=-1, p=2)
-    return  - (x * y).sum(dim=-1).mean()
+def get_module_by_name(module, access_string):
+     names = access_string.split(sep='.')[:-1]
+     return reduce(getattr, names, module)
 
-def invariance_loss(z1: torch.Tensor, z2: torch.Tensor) -> torch.Tensor:
-    """Computes mse loss given batch of projected features z1 from view 1 and
-    projected features z2 from view 2.
 
-    Args:
-        z1 (torch.Tensor): NxD Tensor containing projected features from view 1.
-        z2 (torch.Tensor): NxD Tensor containing projected features from view 2.
+def activation_collection(model, loader, device, orth_set):
+    start = time.time()
+    activation = {}
+    def getActivation(id):
+        # the hook signature
+        def hook(model, input, output):
+            activation[id].append(input[0].detach())
+        return hook
 
-    Returns:
-        torch.Tensor: invariance loss (mean squared error).
-    """
+    hooks = []
+    for name, _ in model.encoder.backbone.named_parameters():
+        if "weight" in name:
+            module = get_module_by_name(model.encoder.backbone, name)
+            if isinstance(module, torch.nn.Conv2d):
+                activation[name] = []
+                hooks.append(module.register_forward_hook(getActivation(name)))
 
-    return F.mse_loss(z1, z2)
+    model.eval()
+    for batch_index, (x, _) in enumerate(loader):
+        x=x.to(device)
+        _ = model.encoder.backbone(x)
+        if batch_index > len(loader)/10-1:
+            break
+            
+    for hook in hooks:
+        hook.remove()
 
-class Predictor(nn.Module):
+    for name in activation.keys():
+        activation[name] = torch.cat(activation[name],dim=0)
+        if "shortcut" not in name:
+            activation[name] = F.pad(activation[name], (1, 1, 1, 1), "constant", 0)
 
-    def __init__(self, input_dim=2048, hidden_dim=512, output_dim=2048):
-        super().__init__()
-        self.fc1 = nn.Linear(input_dim, hidden_dim)
-        self.bn1 = nn.BatchNorm1d(hidden_dim)
-        self.fc2 = nn.Linear(hidden_dim, output_dim)
+    for name in activation.keys():
+        module = get_module_by_name(model.encoder.backbone, name)
+        unfolder = torch.nn.Unfold(module.kernel_size[0], dilation=1, padding=0, stride= module.stride[0])
+        act = activation[name]
+        mat = unfolder(act.to(device))
+        mat = mat.permute(0,2,1)
+        mat = mat.reshape(-1, mat.shape[2])
+        mat = mat.T
+    
+        if orth_set[name] is not None:
+            U = orth_set[name].to(device)
+            projected = U @ U.T @ mat
+            remaining = mat - projected
+            activation[name] = remaining.cpu()
+        else:
+            activation[name] = mat.cpu()
+    end = time.time()
+    print(f'Activations collection time {end-start}')
+    return activation 
 
-    def forward(self, x):
-        out = F.relu(self.bn1(self.fc1(x)))
-        out = self.fc2(out)
-        return out
+def expand_orth_set(activations, orth_set, args, device):
+    for key in activations.keys():
+        if orth_set[key] == None:
+            projected = torch.zeros(1)
+        else:
+            projected = orth_set[key]  @ orth_set[key].T @ activations[key] 
+
+        remaining = (activations[key] - projected).to(device)
+        remaining = remaining@remaining.T
+        #find svds of remaining
+        U, S, _ = torch.svd(remaining.cpu())
+        #find how many singular vectors will be used
+        total = torch.norm(activations[key])**2
+        proj_norm = torch.norm(projected)**2
+        for i in range(len(S)):
+            hand = proj_norm + torch.sum(S[0:i+1])
+            if i == 0 and hand / total > args.epsilon:
+                break
+            elif hand / total > args.epsilon:
+                break
+            
+        print(U[:,0:i+1].shape)
+        if orth_set[key] == None:
+            orth_set[key] = U[:,0:i+1].cpu()
+        else:
+            orth_set[key] = torch.cat((orth_set[key], U[:,0:i+1]),dim=1).cpu()
+            orth_set[key], _ = torch.qr(orth_set[key])
 
 def get_cone(loader, model, device, quantile=0.05):
     features = torch.Tensor([])
@@ -170,21 +225,17 @@ def get_cone(loader, model, device, quantile=0.05):
     cs = torch.quantile(scores, q=quantile)
     return mean, cs
 
+def train_gpm_cosine_barlow(model, train_data_loaders_generic, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime):
+    orth_set = {}
+    layers = []
+    for name, param in model.encoder.backbone.named_parameters():
+        if "weight" in name:
+            module = get_module_by_name(model.encoder.backbone, name)
+            if isinstance(module, torch.nn.Conv2d):
+                orth_set[name] = None
+                layers.append(name)
 
-def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear,  transform, transform_prime, device, args):
-    
     epoch_counter = 0
-    model.temporal_projector = nn.Sequential(
-            nn.Linear(args.proj_out, args.proj_hidden, bias=False),
-            nn.BatchNorm1d(args.proj_hidden),
-            nn.ReLU(),
-            nn.Linear(args.proj_hidden, args.proj_out),
-        ).to(device)
-    old_model = None
-    criterion = nn.CosineSimilarity(dim=1)
-    cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
-    old_linear = None
-
     cone_mean = []
     cone_cs = []
 
@@ -192,143 +243,99 @@ def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_tra
     data_normalize_std = (0.2673, 0.2564, 0.2762)
     random_crop_size = 32
 
-    transform_linear = transforms.Compose( [
-                transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
-                transforms.RandomHorizontalFlip(),
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
+    transform_linear = T.Compose( [
+                T.RandomResizedCrop(random_crop_size,  interpolation=T.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                T.RandomHorizontalFlip(),
+                T.Normalize(data_normalize_mean, data_normalize_std),
             ] )
+
 
     for task_id, loader in enumerate(train_data_loaders_generic):
 
+        loader.dataset.transforms = [transform, transform_prime, transform_linear]
+
         if task_id == 0 and args.start_chkpt == 1:
+            model.temporal_projector = nn.Sequential(
+                nn.Linear(args.proj_out, args.proj_hidden, bias=False),
+                nn.BatchNorm1d(args.proj_hidden),
+                nn.ReLU(),
+                nn.Linear(args.proj_hidden, args.proj_out),
+            ).to(device)
+            
             model_path = "./checkpoints/checkpoint_cifar100-algocassle_barlow-e[500, 500, 500, 500, 500]-b256-lr0.3-CS[20, 20, 20, 20, 20]_task_0_same_lr_True_norm_batch_ws_False_first_task_chkpt.pth.tar"
             model.load_state_dict(torch.load(model_path)['state_dict'])
             model.task_id = task_id
             epoch_counter = 500
-        else:
-            # Optimizer and Scheduler
-            model.task_id = task_id
+        else:        
+
+            for _, module in model.encoder.backbone.named_modules():
+                if isinstance(module, torch.nn.BatchNorm2d):
+                    module.weight.requires_grad=False
+                    module.bias.requires_grad=False
+                    module.track_running_stats = False
+                
             init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256.
-            if task_id != 0 and args.same_lr != True:
-                init_lr = init_lr / 10
-
-            if task_id != 0: 
-                #linear = nn.Sequential(nn.Linear(512, 512, bias=True).to(device),nn.BatchNorm1d(512,affine=True)).to(device)#affine true or false don't remember
-                linear =  nn.Sequential(
-                            nn.Linear(512, 1024),
-                            nn.BatchNorm1d(1024),
-                            nn.ReLU(inplace=True),
-                            nn.Linear(1024, 512),
-                            nn.BatchNorm1d(512),
-                            nn.ReLU(inplace=True)).to(device)
-                model.linear = linear
-
-
-            optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)  
-            # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
+            
+            optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)
             scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id]) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
+            cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
 
             loss_ = []
-            loader.dataset.transforms = [transform, transform_prime]
             for epoch in range(args.epochs[task_id]):
                 start = time.time()
                 model.train()
+                model.encoder.backbone.eval()
+                model.encoder.projector.train()
                 epoch_loss = []
                 coss_loss = []
-                for x, _ in loader:
-                    x1, x2 = x[0], x[1]
-                    x1, x2 = x1.to(device), x2.to(device)
-
-                    if  task_id == 0: 
-                        m1 = model.encoder.backbone(x1).squeeze()
-                        m2 = model.encoder.backbone(x2).squeeze()
-                        z1 = model.encoder.projector(m1)
-                        z2 = model.encoder.projector(m2)
-                    else:
-                        m1 = model.encoder.backbone(x1).squeeze()
-                        m2 = model.encoder.backbone(x2).squeeze()
-
-                        z1 = model.linear(m1)
-                        z2 = model.linear(m2)
-
-                        z1 = model.encoder.projector(z1)
-                        z2 = model.encoder.projector(z2)
-                   
+                for x, _ in loader:   
+                    x1, x2, x3 = x[0], x[1], x[2]
+                    x1, x2, x3 = x1.to(device), x2.to(device), x3.to(device)  
+                    z1,z2 = model(x1, x2)
                     loss =  cross_loss(z1, z2)
-                    
-                    if task_id != 0: #do Distillation
 
-                        if task_id != 1:
-                            f1Old = oldModel.backbone(x1).squeeze()
-                            f2Old = oldModel.backbone(x2).squeeze()
-
-                            f1Old = old_linear(f1Old)
-                            f2Old = old_linear(f2Old)
-
-                            f1Old = oldModel.projector(f1Old)
-                            f2Old = oldModel.projector(f2Old)
-
-
-                            z1_kd = model.encoder.projector(old_linear(m1))
-                            z2_kd = model.encoder.projector(old_linear(m2))
-                            
-                            p2_1 = model.temporal_projector(z1_kd)
-                            p2_2 = model.temporal_projector(z2_kd)
-                            
-                            
-                            lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
-                                                + cross_loss(p2_2, f2Old).mean() * 0.5) )
-                            loss += lossKD
-
-                        else:
-                            f1Old = oldModel(x1).squeeze().detach()
-                            f2Old = oldModel(x2).squeeze().detach()
-                            p2_1 = model.temporal_projector(z1)
-                            p2_2 = model.temporal_projector(z2)
-                            
-                            #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
-
-                            lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
-                                                + cross_loss(p2_2, f2Old).mean() * 0.5) )
-                            loss += lossKD 
-
-
-                        cossine_loss = torch.tensor(0)
-                        #for ind in range(len(cone_cs)):
-                        #    scores1 = torch.cosine_similarity(cone_mean[ind].to(device), m1)
-                        #    scores2 = torch.cosine_similarity(cone_mean[ind].to(device), m2)
-                        #    cossine_loss += torch.mean(0.5*(scores1 + 1)) + torch.mean(0.5*(scores2 + 1 ))
-
+                    cossine_loss=0
+                    if task_id > 0:
+                        m3 = model.encoder.backbone(x3).squeeze()
+                        for ind in range(len(cone_cs)):
+                            scores = torch.cosine_similarity(cone_mean[ind].to(device), m3)
+                            cossine_loss += torch.max(torch.tensor(0), scores-cone_cs[ind]).mean()
                         loss += args.lambdacs * cossine_loss
 
-                    else:
-                        cossine_loss = torch.tensor(0)
-                    
                     epoch_loss.append(loss.item())
                     coss_loss.append(cossine_loss.item())
-                    
+
                     optimizer.zero_grad()
                     loss.backward()
-                    optimizer.step() 
+                    with torch.no_grad():
+                        for key,p in model.encoder.backbone.named_parameters():
+                            if key in layers:
+                                if orth_set[key] == None:
+                                    if p.grad != None:
+                                        print(key)
+                                    continue
+                                grad = p.grad.data
+                                projected = orth_set[key].to(device) @ orth_set[key].T.to(device) @ grad.view(grad.size(0), -1).T
+                                p.grad.data = grad - projected.T.view(grad.size())
+                    optimizer.step()
+
                 epoch_counter += 1
                 scheduler.step()
                 loss_.append(np.mean(epoch_loss))
                 end = time.time()
-                print('epoch end')
                 if (epoch+1) % args.knn_report_freq == 0:
                     knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
                     wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
                     for i, acc in enumerate(task_acc_arr):
                         wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
-                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} | Cos Loss: {np.mean(coss_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
+                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Cos Loss: {np.mean(coss_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
                     print(task_acc_arr)
-                    wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Cossine Loss ": np.mean(coss_loss), " Epoch ": epoch_counter})  
-                    wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
                 else:
-                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} | Cos Loss: {np.mean(coss_loss):.4f}  ')
+                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Cos Loss: {np.mean(coss_loss):.4f}')
             
-                
-
+                wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
+                wandb.log({" Cosine Loss ": np.mean(coss_loss), " Epoch ": epoch_counter}) 
+                wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
             file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
             # save your encoder network
@@ -337,24 +344,17 @@ def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_tra
                             'optimizer' : optimizer.state_dict(),
                             'encoder': model.encoder.backbone.state_dict(),
                         }, file_name)
-                
-
-        oldModel = deepcopy(model.encoder)  # save t-1 model
-        oldModel.to(device)
-        oldModel.train()
-        for param in oldModel.parameters(): #Freeze old model
-            param.requires_grad = False
-
-        if task_id != 0:
-            old_linear = deepcopy(model.linear)
-            old_linear.to(device)
-            for param in old_linear.parameters(): #Freeze linear model
-                param.requires_grad = False
 
         mean, cs = get_cone(train_data_loaders_linear[task_id], model, device, quantile=0.05)
         cone_mean.append(mean)
         cone_cs.append(cs)
 
+        activations = activation_collection(model, train_data_loaders_linear[task_id], device, orth_set)
+        expand_orth_set(activations, orth_set, args, device)
+
+        filename = './checkpoints/orthset_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_eps_' + str(args.epsilon) + '.pkl'
+        with open(filename, 'wb') as f:
+            pickle.dump(orth_set, f)
 
         if task_id < len(train_data_loaders_generic)-1 and not (task_id == 0 and args.start_chkpt == 1):
             lin_epoch = 100
@@ -364,8 +364,5 @@ def train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, knn_tra
             lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
             linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
 
-
     return model, loss_, optimizer
-
-
 

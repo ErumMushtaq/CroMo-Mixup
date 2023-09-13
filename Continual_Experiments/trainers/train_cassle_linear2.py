@@ -163,12 +163,12 @@ class Predictor(nn.Module):
 def train_cassle_linear_barlow2(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
     
     epoch_counter = 0
-    model.temporal_projector = nn.Sequential(
-            nn.Linear(args.proj_out, args.proj_hidden, bias=False),
-            nn.BatchNorm1d(args.proj_hidden),
-            nn.ReLU(),
-            nn.Linear(args.proj_hidden, args.proj_out),
-        ).to(device)
+    # model.temporal_projector = nn.Sequential(
+    #         nn.Linear(args.proj_out, args.proj_hidden, bias=False),
+    #         nn.BatchNorm1d(args.proj_hidden),
+    #         nn.ReLU(),
+    #         nn.Linear(args.proj_hidden, args.proj_out),
+    #     ).to(device)
     old_model = None
     criterion = nn.CosineSimilarity(dim=1)
     cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
@@ -181,13 +181,16 @@ def train_cassle_linear_barlow2(model, train_data_loaders, knn_train_data_loader
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
 
-        
-        model.temporal_projector = nn.Sequential(
-            nn.Linear(args.proj_out, args.proj_hidden, bias=False),
-            nn.BatchNorm1d(args.proj_hidden),
-            nn.ReLU(),
-            nn.Linear(args.proj_hidden, args.proj_out),
-        ).to(device)
+        if task_id > 0:
+            model.encoder.projector = nn.Sequential(
+                    nn.Linear(512, args.proj_hidden),
+                    nn.BatchNorm1d(args.proj_hidden),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(args.proj_hidden, args.proj_hidden),
+                    nn.BatchNorm1d(args.proj_hidden),
+                    nn.ReLU(inplace=True),
+                    nn.Linear(args.proj_hidden, args.proj_out),
+                    nn.BatchNorm1d(args.proj_out)).to(device)
          
 
         optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)  
@@ -220,12 +223,12 @@ def train_cassle_linear_barlow2(model, train_data_loaders, knn_train_data_loader
                     z1_cur = oldModel.projector(z1_cur)
                     z2_cur = oldModel.projector(z2_cur)
                     
-                    p2_1 = model.temporal_projector(z1_cur)
-                    p2_2 = model.temporal_projector(z2_cur)
+                    # p2_1 = model.temporal_projector(z1_cur)
+                    # p2_2 = model.temporal_projector(z2_cur)
                     
                     
-                    lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
-                                           + cross_loss(p2_2, f2Old).mean() * 0.5) )
+                    lossKD = args.lambdap * ((cross_loss(z1_cur, f1Old).mean() * 0.5
+                                           + cross_loss(z2_cur, f2Old).mean() * 0.5) )
                     loss += lossKD 
 
                 epoch_loss.append(loss.item())

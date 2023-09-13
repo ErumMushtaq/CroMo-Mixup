@@ -157,7 +157,7 @@ class Predictor(nn.Module):
         out = self.fc2(out)
         return out
 
-def train_cassle_simsiam(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
+def train_simsiam(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -199,18 +199,6 @@ def train_cassle_simsiam(model, train_data_loaders, knn_train_data_loaders, test
                 loss = 0.5*loss_one + 0.5*loss_two
                 loss = loss.mean()
 
-                if task_id != 0: #do Distillation
-                    f1Old = oldModel(x1).squeeze().detach()
-                    f2Old = oldModel(x2).squeeze().detach()
-                    p2_1 = model.temporal_projector(z1)
-                    p2_2 = model.temporal_projector(z2)
-                    
-                    #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
-
-                    lossKD = args.lambdap * ((loss_fn(p2_1, f1Old).mean() * 0.5
-                                           + loss_fn(p2_2, f2Old).mean() * 0.5) )
-                    loss += lossKD 
-                
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
@@ -233,14 +221,6 @@ def train_cassle_simsiam(model, train_data_loaders, knn_train_data_loaders, test
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
             
-
-        oldModel = deepcopy(model.encoder)  # save t-1 model
-        oldModel.to(device)
-        oldModel.train()
-        for param in oldModel.parameters(): #Freeze old model
-            param.requires_grad = False
-
-
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
@@ -265,7 +245,7 @@ def train_cassle_simsiam(model, train_data_loaders, knn_train_data_loaders, test
 
 
 
-def train_cassle_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
+def train_infomax(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -309,26 +289,6 @@ def train_cassle_infomax(model, train_data_loaders, knn_train_data_loaders, test
                 sim_loss =  invariance_loss(z1, z2)
                 loss = (args.sim_loss_weight * sim_loss) + (args.cov_loss_weight * cov_loss)
 
-                if task_id != 0: #do Distillation
-                    f1Old = oldModel(x1).squeeze().detach()
-                    f2Old = oldModel(x2).squeeze().detach()
-                    p2_1 = model.temporal_projector(z1_cur)
-                    p2_2 = model.temporal_projector(z2_cur)
-
-                    p2_1 = F.normalize(p2_1, p=2)
-                    p2_2 = F.normalize(p2_2, p=2)
-
-                    f1Old = F.normalize(f1Old, p=2)
-                    f2Old = F.normalize(f2Old, p=2)
-
-
-                    cov_loss =  old_covarince_loss(p2_1, f1Old)
-                    sim_loss =  invariance_loss(p2_2, f2Old)
-
-                    lossKD = (args.sim_loss_weight * sim_loss) + (args.cov_loss_weight * cov_loss)
-            
-                    loss += lossKD 
-
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
@@ -352,13 +312,6 @@ def train_cassle_infomax(model, train_data_loaders, knn_train_data_loaders, test
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
             
 
-        oldModel = deepcopy(model.encoder)  # save t-1 model
-        oldModel.to(device)
-        oldModel.train()
-
-        for param in oldModel.parameters(): #Freeze old model
-            param.requires_grad = False
-
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
@@ -379,7 +332,7 @@ def train_cassle_infomax(model, train_data_loaders, knn_train_data_loaders, test
     return model, loss_, optimizer
 
 
-def train_cassle_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
+def train_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
     
     epoch_counter = 0
     model.temporal_projector = nn.Sequential(
@@ -413,18 +366,7 @@ def train_cassle_barlow(model, train_data_loaders, knn_train_data_loaders, test_
                 z1,z2 = model(x1, x2)
                 loss =  cross_loss(z1, z2)
                 
-                if task_id != 0: #do Distillation
-                    f1Old = oldModel(x1).squeeze().detach()
-                    f2Old = oldModel(x2).squeeze().detach()
-                    p2_1 = model.temporal_projector(z1)
-                    p2_2 = model.temporal_projector(z2)
-                    
-                    #lossKD = args.lambdap *  -(invariance_loss(p2_1, f1Old) * 0.5 + invariance_loss(p2_2, f2Old) * 0.5)
 
-                    lossKD = args.lambdap * ((cross_loss(p2_1, f1Old).mean() * 0.5
-                                           + cross_loss(p2_2, f2Old).mean() * 0.5) )
-                    loss += lossKD 
-                
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
@@ -447,14 +389,6 @@ def train_cassle_barlow(model, train_data_loaders, knn_train_data_loaders, test_
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
             
-
-        oldModel = deepcopy(model.encoder)  # save t-1 model
-        oldModel.to(device)
-        oldModel.train()
-        for param in oldModel.parameters(): #Freeze old model
-            param.requires_grad = False
-
-
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network

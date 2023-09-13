@@ -20,18 +20,15 @@ from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 from models.infomax_model import CovModel
 
-from trainers.train_simsiam import train_simsiam
-from trainers.train_infomax import train_infomax
-from trainers.train_barlow import train_barlow
+from trainers.train_basic import train_simsiam, train_barlow, train_infomax
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
 from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax
 
 from trainers.train_cassle_noise import train_cassle_noise_barlow
 
+from trainers.train_cassle_linear import train_cassle_linear_barlow, train_cassle_linear_infomax, train_cassle_linear_simsiam
 
-
-from trainers.train_cassle_linear import train_cassle_linear_barlow
 from trainers.train_cassle_linear2 import train_cassle_linear_barlow2
 
 from trainers.train_cassle_contrastive import train_cassle_contrastive_v1_barlow,train_cassle_contrastive_v2_barlow, train_cassle_contrastive_v3_barlow
@@ -49,6 +46,9 @@ from trainers.train_cassle_ering import train_cassle_barlow_ering
 from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 from trainers.train_cassle_cosine import train_cassle_cosine_barlow
 from trainers.train_cassle_cosine_linear import train_cassle_cosine_linear_barlow
+from trainers.train_cosine_ering import train_cosine_ering_barlow
+from trainers.train_GPM import train_gpm_barlow
+from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 
 
 # from torchsummary import summary
@@ -104,7 +104,7 @@ def add_args(parser):
     parser.add_argument('--pretrain_weight_decay', type=float, default=5e-4)
     parser.add_argument('--min_lr', type=float, default=0.00)
 
-    parser.add_argument('--lambdap', type=float, default=2.0)# should it be 1?
+    parser.add_argument('--lambdap', type=float, default=1.0)# should it be 1?
     parser.add_argument('--appr', type=str, default='basic', help='Approach name, basic, PFR') #approach
 
     parser.add_argument('--knn_report_freq', type=int, default=10)
@@ -155,7 +155,13 @@ def add_args(parser):
 
     parser.add_argument('--cross_lambda', type=float, default=1.0)
 
+    #Cosine+ering parameters
+    parser.add_argument('--apply_ering', type=int, default=1)
+    parser.add_argument('--apply_cosine', type=int, default=1)
     parser.add_argument('--lambdacs', type=float, default=1.0)
+
+    #GPM parameter
+    parser.add_argument('--epsilon', type=float, default=0.9)
     
     args = parser.parse_args()
     return args
@@ -187,7 +193,7 @@ if __name__ == "__main__":
     print(device)
     #wandb init
     wandb.init(project="CSSL",  entity="yavuz-team",
-                mode="disabled",
+                #mode="disabled",
                 config=args,
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
@@ -278,11 +284,11 @@ if __name__ == "__main__":
     #Training
     print("Starting Training..")
     if args.appr == 'basic_simsiam': #baseline setup
-        model, loss, optimizer = train_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+        model, loss, optimizer = train_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_infomax': #baseline setup
-        model, loss, optimizer = train_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+        model, loss, optimizer = train_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_barlow': #baseline setup
-        model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+        model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'PFR_simsiam': #CVPR paper
         model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
@@ -299,6 +305,10 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_cosine_linear_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, transform, transform_prime,  device, args)
     elif args.appr == 'cassle_linear_barlow': #CVPR main paper
         model, loss, optimizer = train_cassle_linear_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_linear_infomax': #CVPR main paper
+        model, loss, optimizer = train_cassle_linear_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_linear_simsiam': #CVPR main paper
+        model, loss, optimizer = train_cassle_linear_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_linear_barlow2': #CVPR main paper
         model, loss, optimizer = train_cassle_linear_barlow2(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_barlow_inversion': #CVPR main paper
@@ -306,9 +316,9 @@ if __name__ == "__main__":
     elif args.appr == 'cassle_noise_barlow': #CVPR main paper
         model, loss, optimizer = train_cassle_noise_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, transform, transform_prime, device, args)
     elif args.appr == 'cassle_simsiam': #CVPR main paper
-        model, loss, optimizer = train_cassle_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+        model, loss, optimizer = train_cassle_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'cassle_infomax': #CVPR main paper
-        model, loss, optimizer = train_cassle_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
+        model, loss, optimizer = train_cassle_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'infomax_dist_ering':
         model, loss, optimizer = train_dist_ering_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)
     elif args.appr == 'contrastive_simsiam': #contrastive loss between new and old task samples
@@ -342,7 +352,13 @@ if __name__ == "__main__":
     elif args.appr == 'cassle_contrastive_v3_barlow': #LRD + Replay + barlow
         model, loss, optimizer = train_cassle_contrastive_v3_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, transform, transform_prime, device, args)    
     elif args.appr == 'cassle_ering_barlow': #cassle + ering + barlow
-        model, loss, optimizer = train_cassle_barlow_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
+        model, loss, optimizer = train_cassle_barlow_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
+    elif args.appr == 'cosine_ering_barlow': #cosine + ering + barlow
+        model, loss, optimizer = train_cosine_ering_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
+    elif args.appr == 'gpm_barlow': #gpm+barlow
+        model, loss, optimizer = train_gpm_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args) 
+    elif args.appr == 'gpm_cosine_barlow': #gpm+barlow
+        model, loss, optimizer = train_gpm_cosine_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
     else:
         raise Exception('Approach does not exist in this repo')
 
