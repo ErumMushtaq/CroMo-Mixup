@@ -5,10 +5,10 @@ import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
-from dataloaders.dataset import SimSiam_Dataset, TensorDataset
+from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, Diffusion_Dataset
 
 
-def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
+def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8, valid_transform = None):
 
     ind = np.cumsum(classes)[:-1]
     tasks = np.split(np.arange(sum(classes)), ind, axis=0)
@@ -27,7 +27,8 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
     train_data_loaders_knn = []
     train_data_loaders_pure = []
     train_data_loaders_linear = []
-
+    train_data_loaders_generic = []
+    train_data_loaders_diffusion = []
     for task in tasks:
         xtrain = []
         ytrain = []
@@ -57,22 +58,37 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
 
         data_normalize_mean = (0.4914, 0.4822, 0.4465)
         data_normalize_std = (0.247, 0.243, 0.261)
-        transform_test = transforms.Compose([   
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ])
-        transform_linear = transforms.Compose([
-                    transforms.RandomResizedCrop(32), # scale=(0.2, 1.0) is possible
-                    transforms.RandomHorizontalFlip(),
+        #for diffusion
+        # data_normalize_mean = (0.5, 0.5, 0.5)
+        # data_normalize_std = (0.5, 0.5, 0.5)
+        knn_transform = transforms.Compose([   
                     transforms.Normalize(data_normalize_mean, data_normalize_std),
                 ])
+        if valid_transform is None:
+            transform_test = transforms.Compose([   
+                    transforms.Normalize(data_normalize_mean, data_normalize_std),
+                ])
+            transform_linear = transforms.Compose([
+                        transforms.RandomResizedCrop(32), # scale=(0.2, 1.0) is possible
+                        transforms.RandomHorizontalFlip(),
+                        transforms.Normalize(data_normalize_mean, data_normalize_std),
+                    ])
 
-        linear_batch_size = 256
+            linear_batch_size = 256
+        else:
+            transform_test = valid_transform
+            transform_linear = valid_transform
+            linear_batch_size = 128
+
+        
+
         train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
         train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True))
-        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
+        train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=knn_transform), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform_test), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
         validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8))
         train_data_loaders_linear.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_linear), batch_size=linear_batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
-
-    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear, train_data_loaders_pure
+        train_data_loaders_generic.append(DataLoader(GenericDataset(xtrain, ytrain,transforms=None), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
+        # train_data_loaders_diffusion.append(DataLoader(Diffusion_Dataset(xtrain, ytrain,transform=None), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
+    return train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear, train_data_loaders_pure, train_data_loaders_generic

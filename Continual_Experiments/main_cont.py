@@ -3,22 +3,29 @@ import sys
 import wandb
 import argparse
 import numpy as np
+from sklearn.cluster import KMeans
 from PIL import Image, ImageFilter, ImageOps
+import torch.nn as nn
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
 import torch
 import torchvision.transforms as T
 import torchvision
+from torchvision import transforms as T, utils
 # import data_utils
 # from SSL.corinfomax_ssl.cifar10_tiny.data_utils import make_data
 
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
-from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
+from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, Knn_Validation
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 from models.infomax_model import CovModel
+from models.gaussian_diffusion.basic_unet import UNet_conditional
+from models.gaussian_diffusion.openai_unet import UNetModel
+from diffusers import DDPMScheduler, DDIMScheduler
+from diffusers import UNet2DModel
 
 from trainers.train_basic import train_simsiam, train_barlow, train_infomax
 
@@ -49,6 +56,8 @@ from trainers.train_cassle_cosine_linear import train_cassle_cosine_linear_barlo
 from trainers.train_cosine_ering import train_cosine_ering_barlow
 from trainers.train_GPM import train_gpm_barlow
 from trainers.train_GPM_cosine import train_gpm_cosine_barlow
+from trainers.train_ddpm import train_diffusion
+from trainers.train_cddpm import train_barlow_diffusion
 
 
 # from torchsummary import summary
@@ -162,7 +171,28 @@ def add_args(parser):
 
     #GPM parameter
     parser.add_argument('--epsilon', type=float, default=0.9)
-    
+
+    #Diffusion Model
+    #num_train_timesteps, beta_schedule='squaredcos_cap_v2', num_inference_steps, timestep_spacing="linspace"
+    parser.add_argument('--unet_model', type=str, default='basic', help='basic, openai')
+    parser.add_argument('--noise_scheduler', type=str, default='DDPM', help='DDPM, DDIM')
+    parser.add_argument('--beta_scheduler', type=str, default='squaredcos_cap_v2', help='squaredcos_cap_v2, linear')
+    parser.add_argument('--image_size', type=int, default=32)
+    parser.add_argument('--num_train_timesteps', type=int, default=1000)
+    parser.add_argument('--num_inference_steps', type=int, default=250, help='250, 1000')
+    parser.add_argument('--timestep_spacing', type=str, default='linspace', help='needed for diffusers DDIM')
+    parser.add_argument("--calculate_fid", action="store_true", help='calculate_fid or not')
+    parser.add_argument('--diff_train_lr', type=float, default=1e-4, help='diffusion lr such as 1e-4')
+    parser.add_argument('--diff_weight_decay', type=float, default=5e-4)
+    parser.add_argument('-de', '--diff_epochs', help='delimited list input', type=lambda s: [int(item) for item in s.split(',')])
+    parser.add_argument('--sample_bs', type=int, default=100)
+    parser.add_argument('--diff_train_bs', type=int, default=100)
+    parser.add_argument('--replay_bs', type=int, default=128)
+    parser.add_argument("--class_condition", action="store_true", help='calculate_fid or not')
+    parser.add_argument("--clustering_label", action="store_true", help='calculate_fid or not')
+    parser.add_argument("--is_debug", action="store_true", help='debug or not')
+    parser.add_argument('--image_report_freq', type=int, default=10)
+
     args = parser.parse_args()
     return args
 
@@ -252,13 +282,13 @@ if __name__ == "__main__":
                 T.RandomApply([GaussianBlur()], p=0.0),
                 T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
-
     #Dataloaders
     print("Creating Dataloaders..")
 
     batch_size = args.pretrain_batch_size
 
     # #Class Based
+    #train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear, train_data_loaders_pure
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
@@ -280,10 +310,65 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         model = Siamese(encoder)
         model.to(device) #automatically detects from model
+    if 'diffusion' in args.appr:
+        #1. DataLoader for Diffusion Model
+        diffusion_tr   = T.Compose([
+            T.Resize(args.image_size + int(.25*args.image_size)),  # args.img_size + 1/4 *args.img_size
+            T.RandomHorizontalFlip(),
+            T.RandomResizedCrop(args.image_size, scale=(0.8, 1.0)),
+            T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),]) # features are normalized from 0 to 1
+        diffusion_tr  = None
+        val_transforms = T.Compose([
+            T.Resize(args.image_size),
+            T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
+        ])
+        if args.dataset == 'cifar10':
+            data_normalize_mean = (0.4914, 0.4822, 0.4465)
+            data_normalize_std = (0.247, 0.243, 0.261)
+            transform_knn = T.Compose( [   
+                T.Normalize(data_normalize_mean, data_normalize_std),
+            ])
+        #Dataloaders
+        print("Creating Diffusion Dataloaders..")
+        batch_size = args.diff_train_bs
+        train_data_loaders_diffusion, _, test_data_loaders_diffusion, _, _, _, _= get_dataloaders(diffusion_tr, diffusion_tr, \
+                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker,  valid_transform=val_transforms)
+        if args.unet_model == 'basic':
+            diffusion_model = UNet_conditional(c_in=3, c_out=3, num_classes=num_classes)
+        elif args.unet_model == 'openai': # for now using the default params for cifar100 from OpenAI's repository.
+            attention_resolutions=   '16,8,4' #32,16,8
+            attention_ds = []
+            for res in attention_resolutions.split(","):
+                attention_ds.append(args.image_size // int(res))
+            model_channels= 128 #192
+            #Openai-improved diffusion github
+            if args.clustering_label:
+                class_numbers = 200*len(args.class_split)
+            else:
+                class_numbers = num_classes
+            diffusion_model = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=3,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2, 3, 4),num_classes=class_numbers, use_checkpoint=False, use_fp16=False, num_head_channels=64, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True)
+            
+            # #self-guided diffusion model -> unet_fast
+            # attention_resolutions= '128' #32,16,8
+            # attention_ds = []
+            # for res in attention_resolutions.split(","):
+            #     attention_ds.append(args.image_size // int(res))
+            # diffusion_ = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=2,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2,  4),num_classes=10, use_checkpoint=False, use_fp16=False, num_head_channels=8, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True)
+
+        # diffuser library based scheduler
+        if args.noise_scheduler == 'DDPM':
+            noise_scheduler = DDPMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler)
 
     #Training
     print("Starting Training..")
-    if args.appr == 'basic_simsiam': #baseline setup
+    if args.appr == 'barlow_diffusion':
+        print(args.appr)
+        model, loss, optimizer = train_barlow_diffusion(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, diffusion_model, noise_scheduler, train_data_loaders_diffusion, test_data_loaders_diffusion, transform, transform_prime, diffusion_tr, transform_knn )
+    elif args.appr == 'diffusion':
+        trainer = train_diffusion(model, noise_scheduler, train_data_loaders[0], test_data_loaders[0], device,args,train_batch_size = batch_size,train_lr = args.pretrain_base_lr, train_epochs = args.epochs, gradient_accumulate_every = 2, ema_decay = 0.995, amp = True, calculate_fid = True)
+        trainer.train()
+        exit()
+    elif args.appr == 'basic_simsiam': #baseline setup
         model, loss, optimizer = train_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_infomax': #baseline setup
         model, loss, optimizer = train_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
