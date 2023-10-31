@@ -666,7 +666,7 @@ def get_dataloaders(model, n, args, device, noise_scheduler, task_id, transform,
 
 def print_images(diff_train_dl, ema_model, task_id, epoch, text= "Diffusion Training"):
     for images, images2, labels in diff_train_dl:
-        utils.save_image(images2,  str('./results/' +str(text)+'task_id'+str(task_id)+'epoch'+str(epoch)+'emasample-.png'), nrow = int(math.sqrt(images2.shape[0])))
+        # utils.save_image(images2,  str('./results/' +str(text)+'task_id'+str(task_id)+'epoch'+str(epoch)+'emasample-.png'), nrow = int(math.sqrt(images2.shape[0])))
         # images2 = images2.type(torch.uint8) # To plot
         wandb.log({" sampled_images (ema model) "+str(text):     [wandb.Image(img.permute(1,2,0).squeeze().cpu().numpy()) for img in images2]})
 

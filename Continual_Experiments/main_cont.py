@@ -317,7 +317,7 @@ if __name__ == "__main__":
             T.RandomHorizontalFlip(),
             T.RandomResizedCrop(args.image_size, scale=(0.8, 1.0)),
             T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),]) # features are normalized from 0 to 1
-        diffusion_tr  = None
+        diffusion_tr_prime  = None
         val_transforms = T.Compose([
             T.Resize(args.image_size),
             T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
@@ -331,7 +331,7 @@ if __name__ == "__main__":
         #Dataloaders
         print("Creating Diffusion Dataloaders..")
         batch_size = args.diff_train_bs
-        train_data_loaders_diffusion, _, test_data_loaders_diffusion, _, _, _, _= get_dataloaders(diffusion_tr, diffusion_tr, \
+        train_data_loaders_diffusion, _, test_data_loaders_diffusion, _, _, _, _= get_dataloaders(diffusion_tr, diffusion_tr_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker,  valid_transform=val_transforms)
         if args.unet_model == 'basic':
             diffusion_model = UNet_conditional(c_in=3, c_out=3, num_classes=num_classes)
