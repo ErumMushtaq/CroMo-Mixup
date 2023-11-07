@@ -22,8 +22,11 @@ from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, Knn_Validation
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 from models.infomax_model import CovModel
+
 from models.gaussian_diffusion.basic_unet import UNet_conditional
 from models.gaussian_diffusion.openai_unet import UNetModel
+from models.gaussian_diffusion.openai_utils.gaussian_diffusion import GaussianDiffusion
+from models.gaussian_diffusion.openai_utils import gaussian_diffusion as gd
 from diffusers import DDPMScheduler, DDIMScheduler
 from diffusers import UNet2DModel
 
@@ -356,6 +359,22 @@ if __name__ == "__main__":
             # diffusion_ = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=2,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2,  4),num_classes=10, use_checkpoint=False, use_fp16=False, num_head_channels=8, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True)
 
         # diffuser library based scheduler
+        # diffusion = create_gaussian_diffusion(
+        # steps=diffusion_steps,
+        # learn_sigma=learn_sigma,
+        # sigma_small=sigma_small,
+        # noise_schedule=noise_schedule,
+        # use_kl=use_kl,
+        # predict_xstart=predict_xstart,
+        # rescale_timesteps=rescale_timesteps,
+        # rescale_learned_sigmas=rescale_learned_sigmas,
+        # timestep_respacing=timestep_respacing,
+        # )
+        # betas = gd.get_named_beta_schedule(args.beta_scheduler, args.num_train_timesteps)
+        # loss_type = gd.LossType.MSE
+        # model_mean_type = gd.ModelMeanType.EPSILON
+        # model_var_type = gd.ModelVarType.FIXED_LARGE #if do not want to learn thenn gd.ModelVarType.LEARNED_RANGE
+        # diffusion = GaussianDiffusion(betas, args, model_mean_type, model_var_type, loss_type)
         if args.noise_scheduler == 'DDPM':
             noise_scheduler = DDPMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler)
 

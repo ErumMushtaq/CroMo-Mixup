@@ -1,6 +1,7 @@
 import time
 import wandb
 import torch
+import os
 import numpy as np
 from copy import deepcopy
 import math
@@ -9,7 +10,7 @@ from models.gaussian_diffusion.basic_unet import EMA
 import torchvision.transforms as T
 import torch.nn as nn
 from diffusers.optimization import get_cosine_schedule_with_warmup
-from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, Diffusion_Dataset
+from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, Diffusion_Dataset, Unlabeled_Dataset
 from torch.utils.data import DataLoader
 from pathlib import Path
 from torchvision import transforms as T, utils
@@ -363,6 +364,7 @@ def train_barlow_diffusion(model, train_data_loaders, knn_train_data_loaders, te
     criterion = nn.CosineSimilarity(dim=1)
     cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
     old_difftrain_dataloader = None
+    memory_x, memory_y, memory_cid = None, None, None
 
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
@@ -383,29 +385,22 @@ def train_barlow_diffusion(model, train_data_loaders, knn_train_data_loaders, te
             for x1, x2, y in loader:
                 x1, x2 = x1.to(device), x2.to(device)
                 if task_id > 0:
-                    #use diffusiondata loader to get sampled images
-                    dataloader_iterator = iter(old_train_dataloader)
-                    # for cur_data in dataloader_iterator:
-                    try:
-                        x1_, x2_, _ = next(dataloader_iterator)
-                        x1_, x2_ = x1_.to(device), x2_.to(device)
-                    except StopIteration:
-                        dataloader_iterator = iter(old_data_loader)
-                        x1_, x2_, _  = next(dataloader_iterator)
-                        x1_, x2_ = x1_.to(device), x2_.to(device)
-
-                    x1 = torch.cat((x1, x1_), dim = 0)
-                    x2 = torch.cat((x2, x2_), dim = 0)
-                    # print(x1.shape)
-                # x1, x2 = x1.to(device), x2.to(device)
+                    x1_old = torch.Tensor([])
+                    x2_old = torch.Tensor([])
+                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                    indices = np.random.choice(len(memory_x), size=min(args.diff_train_bs, len(memory_x)), replace=False)
+                    for ind in indices:
+                        x1_old = torch.cat((x1_old, transform(memory_x[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory_x[ind:ind+1])), dim=0)
+                    x1 = torch.cat([x1, x1_old], dim=0)
+                    x2 = torch.cat([x2, x2_old], dim=0)
                 z1,z2 = model(x1, x2)
                 loss =  cross_loss(z1, z2)
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step() 
-                if args.is_debug:
-                    break
+
             epoch_counter += 1
             scheduler.step()
             loss_.append(np.mean(epoch_loss))
@@ -422,10 +417,12 @@ def train_barlow_diffusion(model, train_data_loaders, knn_train_data_loaders, te
 
             else:
                 print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
-        
+
             if task_id > 0 and (epoch+1) % args.image_report_freq == 0:
                 # diff_train_dl, ema_model, task_id, epoch
-                print_images(old_difftrain_dataloader, old_diffusion_model, task_id, epoch, text= "SSL Training")
+                print_images_to_wandb(args, memory_x, old_diffusion_model, task_id, epoch, text= "SSL Training")
+            if args.is_debug:
+                break
 
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
@@ -433,8 +430,7 @@ def train_barlow_diffusion(model, train_data_loaders, knn_train_data_loaders, te
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
-        torch.save({
-                        'state_dict': model.state_dict(),
+        torch.save({'state_dict': model.state_dict(),
                         'optimizer' : optimizer.state_dict(),
                         'encoder': model.encoder.backbone.state_dict(),
                     }, file_name)
@@ -450,29 +446,33 @@ def train_barlow_diffusion(model, train_data_loaders, knn_train_data_loaders, te
             lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
             linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
 
-        #train a diffusion model
+
         #send model initialization, update dataloader, send the previous model to sample new images for training, train the diffusion model 
         kmeans_clustering = None
         if task_id < len(train_data_loaders)-1: # do not calculate for last task
             train_dl_diff, test_dl_diff = train_data_loaders_diffusion[task_id], test_data_loaders_diffusion[task_id] #use original dataloaders for class label conditioning
-            if args.clustering_label:  #if cluster id labeling, then obtain a predictor, predict labels for the diffusion dataloader
-                n_cluster = 200*(task_id+1)
-                kmeans_clustering = KNNmeans_clustering(n_cluster=n_cluster, encoder=model.encoder, current_knn_dataloader=knn_train_data_loaders[task_id], old_diffusion_dataloader=old_difftrain_dataloader, task_id=task_id, transform_knn=transform_knn, device=device)
-                train_dl_diff = get_clustering_dataloader(args, kmeans_clustering, train_data_loaders_diffusion[task_id], model.encoder,  transform_knn, diffusion_tr, device)
+            if args.clustering_label:
+                n_cluster = 20*(task_id+1)
+                kmeans_clustering = KNNmeans_cluster_training(n_cluster=n_cluster, encoder=model.encoder, current_knn_dataloader=knn_train_data_loaders[task_id], memory=memory_x, task_id=task_id, transform_knn=transform_knn, device=device)
+                xtrain = torch.Tensor([])
+                for xx1, xx2, y in train_data_loaders_diffusion[task_id]:
+                    xtrain = torch.cat([xx2, xtrain], dim=0)
 
-            diffusion_model_weights = train_diffusion_model(diffusion_model, old_diffusion_model, noise_scheduler, args, train_dl_diff, test_dl_diff, task_id, device, diffusion_tr, old_difftrain_dataloader,transform, transform_prime,200*(task_id+1), kmeans_clustering, model.encoder,transform_knn)
+                xvector, yvector_cid = get_cluster_ids_of_unlabeled_exemplar_set(xtrain, model.encoder, kmeans_clustering, n_cluster, transform_knn, args, device)
+                train_dl_diff = get_dataloader(xvector=xvector, yvector=yvector_cid, batchsize=args.diff_train_bs, transform=diffusion_tr, transform_prime=None, num_workers=4, )
+ 
+            diffusion_model_weights = train_diffusion_model(diffusion_model, noise_scheduler, args, train_dl_diff, test_dl_diff, task_id, device, diffusion_tr, memory_x, memory_y, memory_cid ,200*(task_id+1), kmeans_clustering, model.encoder, transform_knn)
             diffusion_model.load_state_dict(diffusion_model_weights)
             old_diffusion_model = deepcopy(diffusion_model).requires_grad_(False)
             print('Sample Samples for next task')
-            old_train_dataloader, old_difftrain_dataloader = get_dataloaders(diffusion_model, args.sample_bs, args, device, noise_scheduler, task_id, transform, transform_prime,  diffusion_tr, 'train', len(test_dl_diff), 200*(task_id+1)) #state='train', iteration_=4,n_cluster=0
-            if args.clustering_label: 
-                old_difftrain_dataloader = get_clustering_dataloader(args, kmeans_clustering, old_difftrain_dataloader, model.encoder,  transform_knn, diffusion_tr, device)
-
-
+            memory_x, memory_y = get_exemplar_set_by_sampling(diffusion_model, args, device, noise_scheduler, task_id, state='train', iteration_=4, n_cluster=10)
+            if args.clustering_label:
+                memory_x, memory_cid = get_cluster_ids_of_unlabeled_exemplar_set(xvector, model.encoder, kmeans_clustering, n_cluster, transform_knn, args, device)
 
     return model, loss_, optimizer
 
-def train_diffusion_model(model, old_model, noise_scheduler, args, train_dataloader, test_dataloader, task_id, device, diffusion_tr, old_difftrain_dataloader,transform, transform_prime,n_clusters,kmeans_clustering, encoder, transform_knn):
+
+def train_diffusion_model(model, noise_scheduler, args, train_dataloader, test_dataloader, task_id, device, diffusion_tr, memory_x, memory_y, memory_cid, n_clusters, kmeans_clustering, encoder, knn_transform):
     ema_model = deepcopy(model).eval().requires_grad_(False)
     ema = EMA(0.995)
     model.to(device)
@@ -492,24 +492,26 @@ def train_diffusion_model(model, old_model, noise_scheduler, args, train_dataloa
         for images, images2, labels in train_dataloader:
             diffoptimizer.zero_grad()
             images = images.to(device)
-            if args.class_condition:
-                labels = labels.to(device)
+            if args.class_condition or args.clustering_label:
+                labels = labels.long().to(device)
             else:
                 labels = None
             if task_id > 0: # sample images from the old model
-                dataloader_iterator = iter(old_difftrain_dataloader)
-                try:
-                    x1_, x2_, labels_ = next(dataloader_iterator)
-                    x1_, x2_,labels_= x1_.to(device), x2_.to(device),labels_.to(device)
-                except StopIteration:
-                    dataloader_iterator = iter(old_difftrain_dataloader)
-                    x1_, x2_, labels_ = next(dataloader_iterator)
-                    x1_, x2_,labels_= x1_.to(device), x2_.to(device),labels_.to(device)
-                # sampled_images, labels_ = sample_images(old_model, args.sample_bs, args, device, noise_scheduler, task_id)
-                # x1_ = diffusion_tr(sampled_images)
+                x_old = torch.Tensor([])
+                y_old = torch.Tensor([])
+                indices = np.random.choice(len(memory_x), size=min(args.diff_train_bs, len(memory)), replace=False)
+                for ind in indices:
+                    x_old = torch.cat((x_old, diff_transform(memory_x[ind:ind+1])), dim=0)
+                    if args.class_condition:
+                        y_old = torch.cat((y_old, memory_y[ind:ind+1]), dim=0)
+                    if args.clustering_label:
+                        y_old = torch.cat((y_old, memory_cid[ind:ind+1]), dim=0)
+                    x_old = x_old.to(device)
                 if labels is not None:
-                    labels = torch.cat((labels, labels_), dim = 0)
+                    y_old = y_old.to(device)
+                    labels = torch.cat((labels, y_old), dim = 0)
                 images = torch.cat([images, x1_], dim = 0)
+
             timesteps = torch.randint(low=1, high=args.num_train_timesteps, size=(images.shape[0],)).to(device)
             noise = torch.randn_like(images)
             x_t = noise_scheduler.add_noise(images, noise, timesteps)
@@ -534,141 +536,128 @@ def train_diffusion_model(model, old_model, noise_scheduler, args, train_dataloa
         # break
         if (epoch+1) % args.image_report_freq == 0:
             print('Sample Samples for Diffusion Model FID Evaluation')
-            # calculate FID
-            # print("Step1: Generate Fake samples")
-            # if args.class_condition:
-            _, old_difftrain_dataloader = get_dataloaders(ema_model, args.diff_train_bs, args, device, noise_scheduler, task_id, transform, transform_prime,  diffusion_tr, state='fid', iteration_ = len(test_dataloader), n_cluster=n_clusters)
             if args.clustering_label:
-                old_difftrain_dataloader = get_clustering_dataloader(args, kmeans_clustering, old_difftrain_dataloader, encoder,  transform_knn, diffusion_tr, device)
-
-                # _, old_difftrain_dataloader = get_dataloaders(ema_model, args.diff_train_bs, args, device, noise_scheduler, task_id, transform, transform_prime,  diffusion_tr, state='fid', iteration_ = len(test_dataloader), n_cluster=n_clusters)
+                total_labels = n_clusters
+            elif args.class_condition:
+                total_labels = np.sum(args.class_split[:task_id+1])
+            else:
+                total_labels = None
+            print(total_labels)
+            fid_x, fid_y = get_exemplar_set_by_sampling(model, args, device, noise_scheduler, task_id, state='fid', iteration_=len(test_dataloader), n_cluster=total_labels)
+            fid_dl = get_dataloader(xvector=fid_x, yvector=None, batchsize=args.diff_train_bs, transform=diffusion_tr, transform_prime=None, num_workers=4, )
             results_folder = './results/'+str(args.class_split)+'task_id'+str(task_id)+'e'+str(args.epochs)+'de'+str(args.diff_epochs)
-            results_folder = Path(results_folder)
-            results_folder.mkdir(exist_ok = True)
-            # print('Step 2: FID Score Eval')
-            fid_score = FID_evaluate(args, ema_model, old_difftrain_dataloader, test_dataloader, results_folder, device, epoch)
+            if not os.path.isdir(results_folder):
+                os.makedirs(results_folder)
+            print('Step 2: FID Score Eval')
+            fid_score = FID_evaluate(args, ema_model, fid_dl, test_dataloader, results_folder, device, epoch)
             print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(loss_):.4f}  | FID:  {fid_score*100:.2f}')
-            print_images(old_difftrain_dataloader, ema_model, task_id, epoch, text= "Diffusion Training")
+            print_images_to_wandb(args, fid_dl, ema_model, task_id, epoch, text= "Diffusion Training")
         else:
             print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(loss_):.4f} ')
-        
-        wandb.log({"train_mse": np.mean(loss_),
-                        "learning_rate": diff_scheduler.get_last_lr()[0]})
-            
-        wandb.log({"train_mse": np.mean(loss_),
-                        "epoch": epoch})
-        # print(f'Epoch {epoch:2d}  | Loss: {np.mean(loss_):.4f}')
+        wandb.log({"train_mse": np.mean(loss_), "learning_rate": diff_scheduler.get_last_lr()[0]})        
+        wandb.log({"train_mse": np.mean(loss_),"epoch": epoch})
     return ema_model.state_dict()
-        # if (epoch+1) % self.args.knn_report_freq == 0:
 
 
 def sample_images(model, n, args, device, noise_scheduler, task_id, cluster_centers):
     model.eval()
-    if args.clustering_label:
+    if args.clustering_label or args.class_condition:
         if n > cluster_centers: #add logic of classes seen so far
             num = int(n/cluster_centers)
             labels_ = torch.tensor([[i]*num for i in range(cluster_centers)]).flatten()
         else:
             labels_ = torch.tensor([[i]*1 for i in range(cluster_centers)]).flatten()
+        labels_ = labels_.to(device)
         labels = labels_.flatten().to(device) #sample num Images per class
-    elif args.class_condition:
-        if n > np.sum(args.class_split[:task_id+1]): #add logic of classes seen so far
-            num = int(n/np.sum(args.class_split[:task_id+1]))
-            # print(np.sum(args.class_split[:task_id+1]))
-            labels_ = torch.tensor([[i]*num for i in range(np.sum(args.class_split[:task_id+1]))]).flatten()
-        else:
-            labels_ = torch.tensor([[i]*1 for i in range(np.sum(args.class_split[:task_id+1]))]).flatten()
-        labels = labels_.flatten().to(device) #sample num Images per class
+        sampled_bs = len(labels_)
     else:
-        if n > np.sum(args.class_split[:task_id+1]): #add logic of classes seen so far
-            num = int(n/np.sum(args.class_split[:task_id+1]))
-            labels_ = torch.tensor([[i]*num for i in range(np.sum(args.class_split[:task_id+1]))]).flatten()
-        else:
-            labels_ = torch.tensor([[i]*1 for i in range(np.sum(args.class_split[:task_id+1]))]).flatten()
+        labels_ = None
+        sampled_bs = args.sample_bs
         labels = None
 
-
     with torch.inference_mode():
-        x = torch.randn((len(labels_), 3, args.image_size, args.image_size)).to(device)
+        x = torch.randn(sampled_bs, 3, args.image_size, args.image_size).to(device)
         for i, t in enumerate(tqdm(noise_scheduler.timesteps)): #timesteps in reverse order
-            # print(len(labels))
             with torch.no_grad():
                 if args.unet_model == 'diffusers':
                     predicted_noise = model(x, t, labels).sample
                 else:
-                    ts = (torch.ones(len(labels_)) * t).long().to(device)
+                    ts = (torch.ones(sampled_bs) * t).long().to(device)
                     predicted_noise = model(x, ts, labels)
             x = noise_scheduler.step(predicted_noise, t, x).prev_sample
             if args.is_debug:
                 break
-            # break
-        # x = (x / 2 + 0.5).clamp(0, 1)
         x = (x.clamp(-1, 1) + 1) / 2 #unnormalize
     return x, labels_
 
 
-def get_clustering_dataloader(args, kmeans_clustering, train_data_loaders_diffusion, encoder, knn_transform, diff_transform, device):
-    xset = []
-    yset =  []
-    index = 0
-    encoder.eval()
-    for x1, x2, y in train_data_loaders_diffusion:
-        x2 = x2.to(device)
-        images = knn_transform(x2)
-        features = encoder.backbone(images).squeeze().detach().cpu().numpy()
-        # print(features.shape) #.astype('double')
-        cluster_ids = kmeans_clustering.predict(features)
-        # print(cluster_ids)
-        if index == 0:
-            xset = images
-            yset = cluster_ids
-        else:
-            xset = torch.cat((xset, x2), dim = 0)
-            yset = torch.cat((yset, cluster_ids), dim = 0)
-    
-    diff_train_dataset = SimSiam_Dataset(xset.to('cpu'), yset, diff_transform, None)
-    diff_train_dl = DataLoader(diff_train_dataset , batch_size=args.diff_train_bs, shuffle=True, num_workers = 4, pin_memory=True)
-    return diff_train_dl
-
-    
-
-def get_dataloaders(model, n, args, device, noise_scheduler, task_id, transform, transform_prime, diff_transform, state='train', iteration_=4,n_cluster=0):
+def get_exemplar_set_by_sampling(model, args, device, noise_scheduler, task_id, state='train', iteration_=4, n_cluster=10,):
     if state == 'fid':
         iteration =  iteration_ - 1
-        diff_transform = T.Compose([
-            T.Resize(args.image_size),
-            T.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])
     else:
         iteration = args.msize/args.diff_train_bs
     if args.is_debug:
         iteration = 4
+    xvector = torch.Tensor([]).to(device)
+    yvector = torch.Tensor([]).to(device)
     for i in range(int(iteration)):
         print(' Sampling Iteration Number: '+str(i+1)+', Total Iterations: '+str(int(iteration)))
         sampled_images, labels = sample_images(model, args.diff_train_bs, args, device, noise_scheduler, task_id, n_cluster)
-        if i == 0:
-            xvector = sampled_images
-            yvector = labels
-        else:
-            xvector = torch.cat((sampled_images, xvector), dim=0)
-            if labels is not None:
-                yvector = torch.cat((labels, yvector), dim=0)
+        xvector = torch.cat((sampled_images, xvector), dim=0)
+        if labels is not None:
+            yvector = torch.cat((labels, yvector), dim=0)
         if i ==2 and args.is_debug:
             break
 
-    train_dataset = SimSiam_Dataset(xvector.to('cpu'), yvector.to('cpu'), transform, transform_prime)
-    diff_train_dataset = SimSiam_Dataset(xvector.to('cpu'), yvector.to('cpu'), diff_transform, None)
+    return xvector, yvector
 
-    train_dl = DataLoader(train_dataset, batch_size=args.replay_bs, shuffle=True, num_workers = 4, pin_memory=True)
-    diff_train_dl = DataLoader(diff_train_dataset , batch_size=args.diff_train_bs, shuffle=True, num_workers = 4, pin_memory=True)
 
-    return train_dl, diff_train_dl
 
-def print_images(diff_train_dl, ema_model, task_id, epoch, text= "Diffusion Training"):
-    for images, images2, labels in diff_train_dl:
-        # utils.save_image(images2,  str('./results/' +str(text)+'task_id'+str(task_id)+'epoch'+str(epoch)+'emasample-.png'), nrow = int(math.sqrt(images2.shape[0])))
-        # images2 = images2.type(torch.uint8) # To plot
+def get_cluster_ids_of_unlabeled_exemplar_set(xvector, encoder, kmeans_clustering, n_clusters, transform_knn, args, device):
+    termination_condition = math.ceil(xvector.shape[0]/args.pretrain_batch_size)-1
+    xset = torch.Tensor([]).to(device)
+    yset_ci = torch.Tensor([]).to(device)
+    for i in range(termination_condition):
+        if i == termination_condition-1:
+            x = xvector[i*args.pretrain_batch_size:]
+        else:
+            x = xvector[i*args.pretrain_batch_size:(i+1)*args.pretrain_batch_size]
+        x = x.to(device)
+        x_ = torch.Tensor([]).to(device)
+        for ind in range(x.shape[0]):
+            x_ = torch.cat((x_, transform_knn(x[ind:ind+1])), dim=0)
+        # images = knn_transform(x_)
+        features = encoder.backbone(x_).squeeze().detach().cpu().numpy()
+        cluster_ids = torch.Tensor(kmeans_clustering.predict(features)).to(device)
+        xset = torch.cat((xset, x), dim = 0)
+        yset_ci = torch.cat((yset_ci, cluster_ids), dim = 0)
+    return xset, yset_ci
+
+
+
+def get_dataloader(xvector, yvector=None, batchsize=64, transform=None, transform_prime=None, num_workers=4, ):
+    if yvector is None:
+        dataset = Unlabeled_Dataset(xvector.to('cpu'), transform)
+    else:
+        dataset = SimSiam_Dataset(xvector.to('cpu'), yvector.to('cpu'), transform, transform_prime)
+    dl = DataLoader(dataset, batch_size=batchsize, shuffle=True, num_workers = num_workers, pin_memory=True)
+    return dl
+    
+
+def print_images_to_wandb(args, diff_train_dl, ema_model, task_id, epoch, text= "Diffusion Training"):
+    if text == "Diffusion Training":
+        for images2 in diff_train_dl:
+            # utils.save_image(images2,  str('./results/' +str(text)+'task_id'+str(task_id)+'epoch'+str(epoch)+'emasample-.png'), nrow = int(math.sqrt(images2.shape[0])))
+            # images2 = images2.type(torch.uint8) # To plot
+            wandb.log({" sampled_images (ema model) "+str(text):     [wandb.Image(img.permute(1,2,0).squeeze().cpu().numpy()) for img in images2]})
+            break
+    else:
+        indices = np.random.choice(len(diff_train_dl), size=min(args.diff_train_bs, len(diff_train_dl)), replace=False)
+        images2 = diff_train_dl[indices]
+            # utils.save_image(images2,  str('./results/' +str(text)+'task_id'+str(task_id)+'epoch'+str(epoch)+'emasample-.png'), nrow = int(math.sqrt(images2.shape[0])))
+            # images2 = images2.type(torch.uint8) # To plot
         wandb.log({" sampled_images (ema model) "+str(text):     [wandb.Image(img.permute(1,2,0).squeeze().cpu().numpy()) for img in images2]})
+        # break
 
 def FID_evaluate(args, ema_model, train_dl, test_dl, results_folder, device, epoch):
     if args.is_debug:
@@ -692,46 +681,57 @@ def FID_evaluate(args, ema_model, train_dl, test_dl, results_folder, device, epo
     return fid_score
 
 
-def KNNmeans_clustering(n_cluster=200, encoder=None, current_knn_dataloader=None, old_diffusion_dataloader=None, task_id=0, transform_knn=None, device='cpu' ):
+def KNNmeans_cluster_training(n_cluster=20, encoder=None, current_knn_dataloader=None, memory=None, task_id=0, transform_knn=None, device='cpu' ):
     ind = 0
     encoder.to(device)
-    # for data in zip(current_knn_dataloader): #cuurent task's knn data loader
+    encoder.eval()
+    train_features = torch.Tensor([]).to(device)
+
+    # Step 1: Concatenate current task + memory data to construct cluster IDs
     for x, y in current_knn_dataloader:
         x = x.to(device)
         features = encoder.backbone(x)
-        features = nn.functional.normalize(features.squeeze()).detach().cpu().numpy()
-        if ind == 0:
-            train_features = features
-        elif ind > 0 and ind <=10:
-            train_features = np.concatenate((train_features, features), axis=0)
-            if ind == 10:
-                break
+        train_features = torch.cat((train_features, features), dim=0)
+        if ind == 10:
+            break
         ind += 1
 
-    if  old_diffusion_dataloader is not None:        
-        for x1, x2, y in old_diffusion_dataloader:
-            x2 = x2.to(device)
-            x2 = transform_knn(x2)
-            features = encoder.backbone(x2)
+    if  memory is not None: 
+        for i in range(10):  
+            x = torch.Tensor([])   
+            indices = np.random.choice(len(memory), size=min(args.diff_train_bs, len(memory)), replace=False) 
+            for ind in indices:
+                x = torch.cat((x, transform_knn(memory[ind:ind+1])), dim=0)
+            x = x.to(device)
+            features = encoder.backbone(x)
             features = nn.functional.normalize(features.squeeze()).detach().cpu().numpy()
-            train_features = np.concatenate((train_features, features), axis=0)
-            if ind == 20:
-                break
-        ind += 1
-    print("train features sahpe")
-    print(train_features.shape)       
-    kmeans = KMeans(n_clusters=n_cluster, random_state=0, n_init="auto").fit(train_features)
-    print(kmeans.labels_.shape)
+            train_features = torch.cat((train_features, features), dim=0)
+    # print(train_features.shape)
+    # print(int(n_cluster))
+    kmeans = KMeans(n_clusters=int(n_cluster), random_state=0, n_init=10).fit(train_features.squeeze().detach().cpu().numpy())
     return kmeans
 
-
-
- 
-
-
-
-
-# def evaluate_diffusion_model():
-
-
+def get_cluster_ids_of_labeled_exemplar_set(xvector, yvector, encoder, kmeans_clustering, n_clusters, knn_transform, ): #if needed by any chance
+    termination_condition = math.ceil(xvector.shape[0]/args.pretrain_batch_size)-1
+    for i in range(termination_condition):
+        if i == termination_condition-1:
+            x = xvector[i*args.pretrain_batch_size:]
+            labels = yvector[i*args.pretrain_batch_size:]
+        else:
+            x = xvector[i*args.pretrain_batch_size:(i+1)*args.pretrain_batch_size]
+            labels = yvector[i*args.pretrain_batch_size:(i+1)*args.pretrain_batch_size]
+        x = x.to(device)
+        labels = labels.to(device)
+        images = knn_transform(x)
+        features = encoder.backbone(images).squeeze().detach().cpu().numpy()
+        cluster_ids = kmeans_clustering.predict(features)
+        if i == 0:
+            xset = images
+            yset_ci = cluster_ids
+            yset = labels            
+        else:
+            xset = torch.cat((xset, x2), dim = 0)
+            yset_ci = torch.cat((yset_ci, cluster_ids), dim = 0)
+            yset = torch.cat((yset, labels), dim = 0)
+    return xset, yset, yset_ci
 

@@ -83,11 +83,11 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
         
 
         train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
-        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True))
+        train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True, timeout=200))
         train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=knn_transform), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
-        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform_test), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
-        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8))
+        test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform_test), batch_size=batch_size, shuffle=False, num_workers = num_worker, pin_memory=True))
+        validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = num_worker))
         train_data_loaders_linear.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_linear), batch_size=linear_batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         train_data_loaders_generic.append(DataLoader(GenericDataset(xtrain, ytrain,transforms=None), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         # train_data_loaders_diffusion.append(DataLoader(Diffusion_Dataset(xtrain, ytrain,transform=None), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))

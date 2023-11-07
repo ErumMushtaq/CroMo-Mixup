@@ -59,13 +59,6 @@ class FIDEvaluation:
         return features
 
     def load_or_precalc_dataset_stats(self):
-        # path = os.path.join(self.stats_dir, "dataset_stats")
-        # try:
-        #     ckpt = np.load(path + ".npz")
-        #     self.m2, self.s2 = ckpt["m2"], ckpt["s2"]
-        #     self.print_fn("Dataset stats loaded from disk.")
-        #     ckpt.close()
-        # except OSError:
         num_batches = int(math.ceil(self.n_samples / self.batch_size))
         stacked_real_features = []
         self.print_fn(
@@ -89,41 +82,8 @@ class FIDEvaluation:
         )
         m2 = np.mean(stacked_real_features, axis=0)
         s2 = np.cov(stacked_real_features, rowvar=False)
-            # np.savez_compressed(path, m2=m2, s2=s2)
-            # self.print_fn(f"Dataset stats cached to {path}.npz for future use.")
         self.m2, self.s2 = m2, s2
-        # self.dataset_stats_loaded = True
 
-    # def load_or_precalc_dataset_stats(self):
-    #     path = os.path.join(self.stats_dir, "dataset_stats")
-    #     try:
-    #         ckpt = np.load(path + ".npz")
-    #         self.m2, self.s2 = ckpt["m2"], ckpt["s2"]
-    #         self.print_fn("Dataset stats loaded from disk.")
-    #         ckpt.close()
-    #     except OSError:
-    #         num_batches = int(math.ceil(self.n_samples / self.batch_size))
-    #         stacked_real_features = []
-    #         self.print_fn(
-    #             f"Stacking Inception features for {self.n_samples} samples from the real dataset."
-    #         )
-    #         for _ in tqdm(range(num_batches)):
-    #             try:
-    #                 real_samples = next(self.dl)[0]
-    #             except StopIteration:
-    #                 break
-    #             real_samples = real_samples.to(self.device)
-    #             real_features = self.calculate_inception_features(real_samples)
-    #             stacked_real_features.append(real_features)
-    #         stacked_real_features = (
-    #             torch.cat(stacked_real_features, dim=0).cpu().numpy()
-    #         )
-    #         m2 = np.mean(stacked_real_features, axis=0)
-    #         s2 = np.cov(stacked_real_features, rowvar=False)
-    #         np.savez_compressed(path, m2=m2, s2=s2)
-    #         self.print_fn(f"Dataset stats cached to {path}.npz for future use.")
-    #         self.m2, self.s2 = m2, s2
-    #     self.dataset_stats_loaded = True
 
     @torch.inference_mode()
     def fid_score(self, fake_samples_dl, n):
@@ -134,53 +94,15 @@ class FIDEvaluation:
         i = 0
 
         stacked_fake_features = []
-
-        for images, fake_samples, labels in fake_samples_dl: #images is without transformation so use that
+        for fake_samples in fake_samples_dl: #images is without transformation so use that
             fake_samples = fake_samples.to(self.device)
             fake_features = self.calculate_inception_features(fake_samples)
             stacked_fake_features.append(fake_features)
             i += 1
             if self.args.is_debug and i == 2:
                 break                
-        #    if i >= len(fake_samples_dl)-2:
-        #         break
         stacked_fake_features = torch.cat(stacked_fake_features, dim=0).cpu().numpy()
         m1 = np.mean(stacked_fake_features, axis=0)
         s1 = np.cov(stacked_fake_features, rowvar=False)
-
         return calculate_frechet_distance(m1, s1, self.m2, self.s2)
-            
-
-
-        # batches = num_to_groups(self.n_samples, self.batch_size)
-        # stacked_fake_features = []
-        # self.print_fn(
-        #     f"Stacking Inception features for {self.n_samples} generated samples."
-        # )
-        # for batch in tqdm(batches):
-        #     # fake_samples = self.sampler.sample(batch_size=batch)
-        #     fake_features = self.calculate_inception_features(fake_samples)
-        #     stacked_fake_features.append(fake_features)
-        # stacked_fake_features = torch.cat(stacked_fake_features, dim=0).cpu().numpy()
-        # m1 = np.mean(stacked_fake_features, axis=0)
-        # s1 = np.cov(stacked_fake_features, rowvar=False)
-
-        # return calculate_frechet_distance(m1, s1, self.m2, self.s2)
-    # def fid_score(self):
-    #     if not self.dataset_stats_loaded:
-    #         self.load_or_precalc_dataset_stats()
-    #     self.sampler.eval()
-    #     batches = num_to_groups(self.n_samples, self.batch_size)
-    #     stacked_fake_features = []
-    #     self.print_fn(
-    #         f"Stacking Inception features for {self.n_samples} generated samples."
-    #     )
-    #     for batch in tqdm(batches):
-    #         fake_samples = self.sampler.sample(batch_size=batch)
-    #         fake_features = self.calculate_inception_features(fake_samples)
-    #         stacked_fake_features.append(fake_features)
-    #     stacked_fake_features = torch.cat(stacked_fake_features, dim=0).cpu().numpy()
-    #     m1 = np.mean(stacked_fake_features, axis=0)
-    #     s1 = np.cov(stacked_fake_features, rowvar=False)
-
-    #     return calculate_frechet_distance(m1, s1, self.m2, self.s2)
+       

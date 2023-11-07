@@ -360,3 +360,7 @@ python3 main_cont.py -cs 20,20,20,20,20 -e 750,500,500,500,500 --dataset cifar10
 python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 2 --appr 'basic_barlow' --pretrain_base_lr 0.1 --pretrain_batch_size 256  --same_lr
 
 OMP_NUM_THREADS=8
+
+python3 main_cont.py -cs 5,5 -e 1,1 -de 1,1 --dataset cifar10 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 4 --appr 'barlow_diffusion' --pretrain_base_lr 0.1 --diff_train_bs 128 --sample_bs 64 --diff_weight_decay 5e-4 --diff_train_lr 1e-4 --unet_model openai  --msize 10000 --image_report_freq 49 --knn_report_freq 1 --class_condition --replay_bs 128 --is_debug 
+
+python3 main_cont.py -cs 5,5 -e 500,500 -de 500,500 --dataset cifar10 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 4 --appr 'barlow_diffusion' --pretrain_base_lr 0.1 --diff_train_bs 128 --sample_bs 64 --diff_weight_decay 5e-4 --diff_train_lr 1e-4 --unet_model openai  --msize 10000 --image_report_freq 49 --knn_report_freq 10 --clustering_label --replay_bs 128

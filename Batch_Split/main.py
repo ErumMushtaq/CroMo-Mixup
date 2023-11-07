@@ -3,9 +3,11 @@ import sys
 import time
 import wandb
 import argparse
-
+from PIL import Image, ImageFilter, ImageOps
 import torch
 import torchvision.transforms as T
+import torchvision
+from torchvision import transforms as T, utils
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "../")))
 sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
@@ -17,18 +19,32 @@ from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 # from models.simsiam import Encoder, Predictor, SimSiam, InfoMax, BarlowTwins
 # from trainers.train_dist_ering import 
-from trainers.train import train
+from trainers.train import train_infomax, train_barlow, train_simsiam
 from trainers.train_sup import train_sup
 from trainers.train_concat import train_concate
 from models.resnet import resnetc18
 from models.resnet_org import resnetc18_bn
-from transform import get_transform
+# from transform import get_transform
 import random
 import torch.nn as nn
 
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 
+class Solarization:
+    def __call__(self, img: Image) -> Image:
+        return ImageOps.solarize(img)
+
+class GaussianBlur(object):
+    """Gaussian blur augmentation in SimCLR https://arxiv.org/abs/2002.05709"""
+
+    def __init__(self, sigma=[0.1, 2.0]):
+        self.sigma = sigma
+
+    def __call__(self, x):
+        sigma = random.uniform(self.sigma[0], self.sigma[1])
+        x = torchvision.transforms.functional.gaussian_blur(x,kernel_size=[3,3],sigma=sigma)#kernel size and sigma are open problems but right now seems ok!
+        return x
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -41,8 +57,8 @@ def add_args(parser):
     return a parser added with args required by fit
     """
 
-    parser.add_argument('-n','--normalization', type=str, default='batch', help='normalization method: batch, group or none')
-    parser.add_argument('--weight_standard', action='store_true', default=True, help='weight standard for conv layers')
+    # parser.add_argument('-n','--normalization', type=str, default='batch', help='normalization method: batch, group or none')
+    # parser.add_argument('--weight_standard', action='store_true', default=True, help='weight standard for conv layers')
 
     # Training settings
     parser.add_argument('-bs','--pretrain_batch_size', type=int, default=512)
@@ -55,13 +71,13 @@ def add_args(parser):
     parser.add_argument('--lambda_param', type=float, default=5e-3)
     parser.add_argument('--la_mu', type=float, default=0.01)
     parser.add_argument('--la_R', type=float, default=0.01)
-    parser.add_argument('--dataset', type=str, default='cifar10', help='cifar10, cifar100')
+    # parser.add_argument('--dataset', type=str, default='cifar10', help='cifar10, cifar100')
 
     parser.add_argument('-d','--dataset', type=str, default='cifar10', help='cifar10, cifar100')
     parser.add_argument('--epochs', type=int, default=1000)
-    parser.add_argument('--knn_report_freq', type=int, default=5)
-    parser.add_argument('--proj_hidden', type=int, default=2048)
-    parser.add_argument('--proj_out', type=int, default=64)
+    parser.add_argument('--knn_report_freq', type=int, default=1)
+    # parser.add_argument('--proj_hidden', type=int, default=2048)
+    # parser.add_argument('--proj_out', type=int, default=64)
 
     parser.add_argument('-gpu','--cuda_device', type=int, default=0, metavar='N', help='device id')
     parser.add_argument('--num_workers', type=int, default=1, metavar='N', help='num of workers')
@@ -69,12 +85,14 @@ def add_args(parser):
     parser.add_argument('--exp_type', type=str, default='basic',help='concat, basic')
 
     # Infomax Args
-    parser.add_argument('--cov_loss_weight', type=float, default=1.0)
-    parser.add_argument('--sim_loss_weight', type=float, default=1000.0)
-    parser.add_argument('--info_loss', type=str, default='invariance', help='infomax loss')
-    parser.add_argument('--R_eps_weight', type=float, default=1e-8)
+    # parser.add_argument('--cov_loss_weight', type=float, default=1.0)
+    # parser.add_argument('--sim_loss_weight', type=float, default=1000.0)
+    # parser.add_argument('--info_loss', type=str, default='invariance', help='infomax loss')
+    # parser.add_argument('--R_eps_weight', type=float, default=1e-8)
 
     parser.add_argument('-cs', '--class_split', help='delimited list input', 
+    type=lambda s: [int(item) for item in s.split(',')])
+    parser.add_argument('-vcs', '--val_class_split', help='delimited list input', 
     type=lambda s: [int(item) for item in s.split(',')])
     parser.add_argument('--cov_loss_weight', type=float, default=1.0)
     parser.add_argument('--sim_loss_weight', type=float, default=250.0)
@@ -91,6 +109,7 @@ def add_args(parser):
     parser.add_argument('--weight_standard', action='store_true', default=False, help='weight standard for conv layers')
 
     parser.add_argument("--normalize_on", action="store_true", help='l2 normalization after projection MLP')
+    parser.add_argument('--scale_loss', type=float, default=0.025)
 
     args = parser.parse_args()
     return args
@@ -100,24 +119,6 @@ if __name__ == "__main__":
     # parse python script input parameters
     parser = argparse.ArgumentParser()
     args = add_args(parser)
-<<<<<<< HEAD
-    num_worker = 2 if len(args.class_split) == 10 else int(8/len(args.class_split))
-
-    if args.dataset == "cifar10":
-        get_dataloaders = get_cifar10
-        get_dataloaders_all = get_cifar10
-        num_classes=10
-    elif args.dataset == "cifar100sup":
-        get_dataloaders = get_cifar100_superclass
-        get_dataloaders_all = get_cifar100
-        num_classes=100
-    elif args.dataset == "cifar100":
-        get_dataloaders = get_cifar100
-        get_dataloaders_all = get_cifar100
-        num_classes=100
-    assert sum(args.class_split) == num_classes
-
-=======
     if args.dataset == "cifar10":
         get_dataloaders = get_cifar10
         num_classes=10
@@ -129,17 +130,17 @@ if __name__ == "__main__":
         mean = (0.5071, 0.4865, 0.4409)
         std = (0.2673, 0.2564, 0.2762)
     assert sum(args.class_split) == num_classes
+    assert sum(args.val_class_split) == num_classes
     # assert len(args.class_split) == len(args.epochs)
 
-    assert sum(args.class_split) == 10
-    num_worker = int(8/len(args.class_split))
+    # assert sum(args.class_split) == 10
+    num_worker = int(10/len(args.class_split))
     if len(args.class_split) == 10:
-        num_worker = 2
+        num_worker = 1
 
-    batch_size = []
-    for k in range(len(args.class_split)):
-        batch_size.append(args.pretrain_batch_size)
->>>>>>> 8644ebc7177e8e3e9a1b9b16622df85ec077e89d
+    batch_size = args.pretrain_batch_size
+    # for k in range(len(args.class_split)):
+    #     batch_size.append(args.pretrain_batch_size)
     #device
     device = torch.device("cuda:" + str(args.cuda_device) if torch.cuda.is_available() else "cpu")
     print(device)
@@ -147,22 +148,7 @@ if __name__ == "__main__":
     wandb.init(project="CSSL", entity="yavuz-team",
                 # mode="disabled",
                 config=args,
-<<<<<<< HEAD
-                name=args.algo + "-" + args.dataset + "-e" + str(args.epochs) + "-b" 
-                + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)
-                +"-CS"+str(args.class_split) +'-'+args.normalization+'norm')
-
-    #Dataloaders
-    print("Creating Dataloaders..")
-    batch_size = args.pretrain_batch_size
-    transform, transform_prime = get_transform(args)
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
-                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-    train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _ = get_dataloaders_all(transform, transform_prime, \
-                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-    print(len(test_data_loaders_all))
-=======
-                name="SimSiam" + "-e" + str(args.epochs) + "-b" 
+                name="BatchSplit" + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + '-algo' + str(args.algo)+'-groupnorm')
 
     if 'simsiam' in args.appr:
@@ -207,8 +193,8 @@ if __name__ == "__main__":
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=1.0), 
-                # T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=0.0), 
+                T.RandomSolarize(0.51, p=0.0), 
                 T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
@@ -216,8 +202,8 @@ if __name__ == "__main__":
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.1),
-                # T.RandomApply([GaussianBlur()], p=0.5), 
+                T.RandomApply([GaussianBlur()], p=0.0),
+                T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
 
 
@@ -229,51 +215,49 @@ if __name__ == "__main__":
     #Dataloaders
     print("Creating Dataloaders..")
     #Class Based
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
+
+    print(num_worker)
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-    _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _ = get_dataloaders(transform, transform_prime, \
-                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+
+    _, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
+                                        classes=args.val_class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+
+    # train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
+    #                                     classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+
+    # _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _ = get_dataloaders(transform, transform_prime, \
+    #                                     classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+
     # train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders = get_cifar10(transform, transform_prime, \
     #                                     classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
     # train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
     #                                     classes=[10], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
->>>>>>> 8644ebc7177e8e3e9a1b9b16622df85ec077e89d
     #Create Model
-    if args.algo == 'simsiam':
+    if 'simsiam' in args.appr:
         print("Creating Model for Simsiam..")
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
-        pred_hidden = 512
-        pred_out = 2048
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        pred_hidden = args.pred_hidden
+        pred_out = args.pred_out
+        # proj_hidden = args.proj_hidden
+        # proj_out = args.proj_out
+        # pred_hidden = 512
+        # pred_out = 2048
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
         model.to(device) #automatically detects from model
-<<<<<<< HEAD
-    if args.algo == 'infomax':
-        proj_hidden = args.proj_hidden
-        proj_out = args.proj_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
-        model = InfoMax(encoder, project_dim=proj_out,device=device, la_mu=args.la_mu,la_R=args.la_R)
-        model.to(device) #automatically detects from model
-    if args.algo == 'barlowtwins':
-        proj_hidden = args.proj_hidden
-        proj_out = args.proj_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
-        model = BarlowTwins(encoder, project_dim = proj_out, lambda_param = args.lambda_param, device=device)
-=======
+        # encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
+        # predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
+        # model = SimSiam(encoder, predictor)
+        # model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr:
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         model = Siamese(encoder)
-        # print(model)
-        # # Infomax model
-        # model2 = CovModel(args)
-        # print(model2)
-        # exit()
->>>>>>> 8644ebc7177e8e3e9a1b9b16622df85ec077e89d
         model.to(device) #automatically detects from model
     if args.algo == 'supervised':
         model = resnetc18(num_classes, normalization = args.normalization, weight_standard = args.weight_standard)
@@ -286,41 +270,17 @@ if __name__ == "__main__":
         torch.save(model, "./checkpoints/"+str(time.time())+"model")
     else:
         if args.exp_type == 'basic':
-            model, loss, optimizer = train(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+            if 'infomax' in args.appr: 
+                model, loss, optimizer = train_infomax(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
+            elif 'barlow' in args.appr:
+                model, loss, optimizer = train_barlow(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
+            elif 'simsiam' in args.appr:
+                model, loss, optimizer = train_simsiam(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
         else:
-<<<<<<< HEAD
-            model, loss, optimizer = train_concate(model, train_data_loaders_all[0], test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
-
-        torch.save(model, "./checkpoints/"+str(time.time())+"model")
-        #Test Linear classification acc
-        print("Starting Classifier Training..")
-        lin_epoch = 100
-        classifier = LinearClassifier(num_classes=num_classes).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
-        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-        test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_knn_all[0],test_data_loaders_all[0],lin_optimizer, classifier, lin_scheduler, epochs=lin_epoch, device=device) 
-
-        #T-SNE Plot
-        # print("Starting T-SNE Plot..")
-        # get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
-
-
-        # save your encoder network
-        save_checkpoint({
-                        'epoch': args.epochs + 1,
-                        'arch': 'resnet18',
-                        'lr': args.pretrain_base_lr,
-                        'state_dict': model.state_dict(),
-                        'optimizer' : optimizer.state_dict(),
-                        'loss': loss,
-                        'encoder': model.encoder.backbone.state_dict(),
-                        'classifier': classifier.state_dict(),
-                    }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.class_split, args.pretrain_batch_size))
-=======
             # train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
             #                                 classes=[10], valid_rate = 0.00, batch_size=10, seed = 0, num_worker= num_worker)
             # train_data_loaders.append(train_data_loaders_all[0])
-            model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders_all[0], train_data_loaders_knn_all[0], train_data_loaders_knn, test_data_loaders, device, args)
+            model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
@@ -335,6 +295,10 @@ if __name__ == "__main__":
         classifier = LinearClassifier(num_classes = 100).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+
+
+    _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
+                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
     test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_linear_all[0],
                                                                     test_data_loaders_all[0],lin_optimizer, classifier, 
@@ -361,7 +325,6 @@ if __name__ == "__main__":
                     'encoder': model.encoder.backbone.state_dict(),
                     'classifier': classifier.state_dict(),
                 }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.class_split, args.pretrain_batch_size))
->>>>>>> 8644ebc7177e8e3e9a1b9b16622df85ec077e89d
 
 
 

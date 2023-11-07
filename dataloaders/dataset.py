@@ -71,6 +71,9 @@ class SimSiam_Dataset(Dataset):
         # x1 = normalize_to_neg_one_to_one(x1)
         return x1, x2, y
 
+    # def get_xtrain(self):
+    #     return self.train_data
+
 class Diffusion_Dataset(Dataset):
     def __init__(self, xtrain, ytrain, transform):
 
@@ -91,25 +94,38 @@ class Diffusion_Dataset(Dataset):
         # x2 = self.transform_prime(self.train_data[idx]) if self.transform_prime is not None else self.train_data[idx]
         return x1, y, idx
 
-class Guided_Diffusion_Dataset(Dataset):
-    def __init__(self, xtrain, ytrain, cluster_ids, transform, transform_prime):
+class Unlabeled_Dataset(Dataset):
+    def __init__(self, xtrain,  transform):
 
         self.train_data = xtrain
-        self.label_data = ytrain
-        self.cluster_id = cluster_ids
-
         self.transform = transform
-        self.transform_prime = transform_prime
 
     def __len__(self):
         return len(self.train_data)
 
     def __getitem__(self, idx):
-        y = self.label_data[idx]
-        ci = se;f/cluster_id[idx]
         x1 = self.transform(self.train_data[idx]) if self.transform is not None else self.train_data[idx]
-        x2 = self.transform_prime(self.train_data[idx]) if self.transform_prime is not None else self.train_data[idx]
-        return x1, y, ci
+        return x1
+
+# class Guided_Diffusion_Dataset(Dataset):
+#     def __init__(self, xtrain, ytrain, cluster_ids, transform, transform_prime):
+
+#         self.train_data = xtrain
+#         self.label_data = ytrain
+#         self.cluster_id = cluster_ids
+
+#         self.transform = transform
+#         self.transform_prime = transform_prime
+
+#     def __len__(self):
+#         return len(self.train_data)
+
+#     def __getitem__(self, idx):
+#         y = self.label_data[idx]
+#         ci = se;f/cluster_id[idx]
+#         x1 = self.transform(self.train_data[idx]) if self.transform is not None else self.train_data[idx]
+#         x2 = self.transform_prime(self.train_data[idx]) if self.transform_prime is not None else self.train_data[idx]
+#         return x1, y, ci
 
 # class Sup_Dataset(Dataset):
 #     def __init__(self, xtrain, ytrain):
