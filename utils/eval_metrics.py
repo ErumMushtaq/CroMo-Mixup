@@ -340,3 +340,128 @@ def get_t_SNE_plot(test_data_loader, encoder, classifier, device, log_message='g
     #Code ref: https://github.com/2-Chae/PyTorch-tSNE/blob/main/main.py
     targets, outputs = gen_features(test_data_loader, encoder, classifier, device)
     tsne_plot(targets, outputs, log_message=log_message, class_count=class_count)
+
+
+def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device):
+    total_correct_1, total_correct_5 = 0.0, 0.0
+    total_num = 0.0
+    total_correct_wp = 0.0
+    # target_copy = target.copy()
+    total_num_task_correct = 0.0
+    for task_id in range(len(args.class_split)):
+        for x, target in test_data_loaders[task_id]:
+            x, target = x.to(device), target.to(device)
+            features = model(x)
+            logits = classifier(features.detach()) 
+            task_probs = torch.nn.functional.softmax(logits, dim = 1)
+            prediction_tp = torch.argmax(task_probs, dim = 1)
+            prediction_wp = torch.argmax(task_probs, dim = 1)
+
+            num = x.shape[0]
+            total_num += num 
+
+            # check TP:
+            for i in range(len(args.class_split)):  #Map predictions to task ids          
+                if i ==0:
+                    prediction_tp[prediction_tp<args.class_split[i]] = i
+                else:
+                    prediction_tp[(prediction_tp>=np.sum(args.class_split[:i])) & (prediction_tp<np.sum(args.class_split[:i+1]))] = i
+
+            correct_top_1 = torch.sum((prediction_tp == task_id).float()).item()
+            total_num_task_correct += correct_top_1
+            # Check WP for the correct TP instances
+
+            correct_top_wp = torch.sum((prediction_wp[prediction_tp == task_id] == target[prediction_tp == task_id]).float()).item() #out of correct TP, how many are correct wp
+            total_correct_wp +=  correct_top_wp 
+
+
+            print(" Total Test samples "+str(num)+" of Task "+str(task_id)+": Correct TP: "+str(correct_top_1)+": Correct WP: "+str(correct_top_wp ))
+            assert correct_top_wp<=correct_top_1
+            assert total_num_task_correct<=total_num
+
+
+    wp = total_correct_wp/total_num_task_correct
+    tp = total_num_task_correct/total_num
+    wandb.log({" Linear Layer Test - TP Acc": tp})
+    wandb.log({" Linear Layer Test - WP Acc": wp})
+    return wp, tp
+
+# def linear_evaluation_WP(model, classifier, test_data_loaders, args, device):
+#     total_correct_1, total_correct_5 = 0.0, 0.0
+#     total_num = 0.0
+#     for task_id in range(len(args.class_split)):
+#         for x, target in test_data_loaders[task_id]:
+#             x, target = x.to(device), target.to(device)
+#             features = model(x)
+#             logits = classifier(features.detach()) #[B, C]
+#             if task_id == 4:
+#                 print(target)
+#             #Map to tasks
+#             if task_id == 0:
+#                 task_logits = logits[:,:args.class_split[task_id]]
+#             else:
+#                 task_logits = logits[:,np.sum(args.class_split[:task_id]):np.sum(args.class_split[:task_id+1])] #pick k logits only
+#             for i in range(args.class_split[task_id]): #map target classes to 0 to k where k = cs of that task
+#                 target[target== task_id*args.class_split[task_id]+i] = i
+            
+#             if task_id == 4:
+#                 print(target)
+#             task_probs = torch.nn.functional.softmax(task_logits, dim = 1) #[B, C]
+#             prediction = torch.argmax(task_probs, dim = 1)
+#             if task_id == 4:
+#                 print(prediction)
+#             correct_top_1 = torch.sum((prediction == target).float()).item()
+#             total_correct_1 +=  correct_top_1 
+#             num = x.shape[0]
+#             total_num += num 
+#     acc_1 = total_correct_1/total_num
+#     wandb.log({" Linear Layer Test - WP Acc": acc_1, " Epoch ": 1})
+#     print("Linear Layer Test - WP Acc "+str(acc_1))
+
+#     return acc_1
+
+# def linear_evaluation_TP(model, classifier, test_data_loaders, args, device):
+#     total_correct_1, total_correct_5 = 0.0, 0.0
+#     total_num = 0.0
+#     for task_id in range(len(args.class_split)):
+#         print(task_id)
+#         for x, target in test_data_loaders[task_id]:
+#             x, target = x.to(device), target.to(device)
+            
+#             features = model(x)
+#             logits = classifier(features.detach()) 
+#             task_probs = torch.nn.functional.softmax(logits, dim = 1)
+#             prediction = torch.argmax(task_probs, dim = 1)
+
+#             for i in range(len(args.class_split)):  #Map targets to task ids          
+#                 if i ==0:
+#                     target[target<args.class_split[i]] = i
+#                     prediction[prediction<args.class_split[i]] = i
+#                 else:
+#                     target[(target>=np.sum(args.class_split[:i])) & (target<np.sum(args.class_split[:i+1]))] = i
+#                     prediction[(prediction>=np.sum(args.class_split[:i])) & (prediction<np.sum(args.class_split[:i+1]))] = i
+
+
+#             correct_top_1 = torch.sum((prediction == target).float()).item()
+#             total_correct_1 += correct_top_1
+#             num = x.shape[0]
+#             total_num += num 
+
+#             if task_id == 0:
+#                 task_logits = logits[:,:args.class_split[task_id]]
+#             else:
+#                 task_logits = logits[:,np.sum(args.class_split[:task_id]):np.sum(args.class_split[:task_id+1])] #pick k logits only
+#             for i in range(args.class_split[task_id]): #map target classes to 0 to k where k = cs of that task
+#                 target_copy[target== task_id*args.class_split[task_id]+i] = i
+
+
+#     acc_1 = total_correct_1/total_num
+#     wandb.log({" Linear Layer Test - TP Acc": acc_1, " Epoch ": 1})
+#     print("Linear Layer Test - TP Acc "+str(acc_1))
+
+    # return acc_1
+
+
+
+            
+

@@ -277,6 +277,10 @@ def train_infomax(model, train_data_loaders, test_data_loaders, train_data_loade
                 loss.backward()
                 optimizer.step()
                 epoch_loss.append(loss.item())
+            #     if args.is_debug:
+            #         break
+            # if args.is_debug:
+            #     break
 
         print('epoch finished') 
         epoch_counter += 1
@@ -290,30 +294,6 @@ def train_infomax(model, train_data_loaders, test_data_loaders, train_data_loade
             knn_acc, task_acc_arr = Knn_Validation_cont(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
             # knn_acc = Knn_Validation(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
             wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch})
-
-            #WP
-            if (epoch+1) % args.knn_report_freq*1 == 0:
-                WP = []
-                for i in range(len(args.val_class_split)):
-                    lin_epoch = 100
-                    num_class = args.val_class_split[i]
-                    classifier = LinearClassifier(num_classes = num_class).to(device)
-                    lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-                    lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-                    _, wp, _ =  linear_evaluation(model, train_data_loaders_linear[i], test_data_loaders[i], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, i, args)  
-                    WP.append(wp)
-
-                #TP
-                # for i in range(len(args.class_split)):
-                lin_epoch = 100
-                num_class = len(args.val_class_split) #total number of tasks
-                classifier = LinearClassifier(num_classes = num_class).to(device)
-                lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-                lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-                _, tp, _ = linear_evaluation_TP(model, train_data_loaders_linear[:], test_data_loaders[:], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, 0, args) 
-
-                wandb.log({" WP ": np.mean(WP), " Epoch ": epoch})
-                wandb.log({" TP ": tp, " Epoch ": epoch})
                     
 
             print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
@@ -351,7 +331,11 @@ def train_barlow(model, train_data_loaders, test_data_loaders, train_data_loader
                 epoch_loss.append(loss.item())
                 optimizer.zero_grad()
                 loss.backward()
-                optimizer.step() 
+                optimizer.step()
+                if args.is_debug:
+                    break
+            if args.is_debug:
+                break
         epoch_counter += 1
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
@@ -361,28 +345,6 @@ def train_barlow(model, train_data_loaders, test_data_loaders, train_data_loader
             knn_acc, task_acc_arr = Knn_Validation_cont(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
             wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch})
 
-            # #WP
-            # if (epoch+1) % args.knn_report_freq*1 == 0:
-            #     WP = []
-            #     for i in range(len(args.val_class_split)):
-            #         lin_epoch = 100
-            #         num_class = args.val_class_split[i]
-            #         classifier = LinearClassifier(num_classes = num_class).to(device)
-            #         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-            #         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-            #         _, wp, _ =  linear_evaluation(model, train_data_loaders_linear[i], test_data_loaders[i], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, i, args)  
-            #         WP.append(wp)
-
-            #     #TP
-            #     lin_epoch = 100
-            #     num_class = len(args.val_class_split) #total number of tasks
-            #     classifier = LinearClassifier(num_classes = num_class).to(device)
-            #     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-            #     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-            #     _, tp, _ = linear_evaluation_TP(model, train_data_loaders_linear[:], test_data_loaders[:], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, 0, args) 
-
-            #     wandb.log({" WP ": np.mean(WP), " Epoch ": epoch})
-            #     wandb.log({" TP ": tp, " Epoch ": epoch})
                     
             print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
         else:
@@ -391,26 +353,6 @@ def train_barlow(model, train_data_loaders, test_data_loaders, train_data_loader
         wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch})  
         wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch})
 
-    WP = []
-    for i in range(len(args.val_class_split)):
-        lin_epoch = 100
-        num_class = args.val_class_split[i]
-        classifier = LinearClassifier(num_classes = num_class).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-        _, wp, _ =  linear_evaluation(model, train_data_loaders_linear[i], test_data_loaders[i], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, i, args)  
-        WP.append(wp)
-
-    #TP
-    lin_epoch = 100
-    num_class = len(args.val_class_split) #total number of tasks
-    classifier = LinearClassifier(num_classes = num_class).to(device)
-    lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-    lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-    _, tp, _ = linear_evaluation_TP(model, train_data_loaders_linear[:], test_data_loaders[:], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, 0, args) 
-
-    wandb.log({" WP ": np.mean(WP), " Epoch ": epoch})
-    wandb.log({" TP ": tp, " Epoch ": epoch})
     return model, loss_, optimizer
 
 def loss_fn(x, y):
@@ -451,6 +393,10 @@ def train_simsiam(model, train_data_loaders, test_data_loaders, train_data_loade
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step() 
+                if args.is_debug:
+                    break
+            if args.is_debug:
+                break
 
         scheduler.step()
         loss_.append(np.mean(epoch_loss))
@@ -472,23 +418,23 @@ def train_simsiam(model, train_data_loaders, test_data_loaders, train_data_loade
         wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch})  
         wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch})
 
-    WP = []
-    for i in range(len(args.val_class_split)):
-        lin_epoch = 100
-        num_class = args.val_class_split[i]
-        classifier = LinearClassifier(num_classes = num_class).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-        _, wp, _ =  linear_evaluation(model, train_data_loaders_linear[i], test_data_loaders[i], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, i, args)  
-        WP.append(wp)
+    # WP = []
+    # for i in range(len(args.val_class_split)):
+    #     lin_epoch = 100
+    #     num_class = args.val_class_split[i]
+    #     classifier = LinearClassifier(num_classes = num_class).to(device)
+    #     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+    #     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+    #     _, wp, _ =  linear_evaluation(model, train_data_loaders_linear[i], test_data_loaders[i], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, i, args)  
+    #     WP.append(wp)
 
-    #TP
-    lin_epoch = 100
-    num_class = len(args.val_class_split) #total number of tasks
-    classifier = LinearClassifier(num_classes = num_class).to(device)
-    lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-    lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-    _, tp, _ = linear_evaluation_TP(model, train_data_loaders_linear[:], test_data_loaders[:], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, 0, args) 
+    # #TP
+    # lin_epoch = 100
+    # num_class = len(args.val_class_split) #total number of tasks
+    # classifier = LinearClassifier(num_classes = num_class).to(device)
+    # lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+    # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+    # _, tp, _ = linear_evaluation_TP(model, train_data_loaders_linear[:], test_data_loaders[:], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, 0, args) 
 
     wandb.log({" WP ": np.mean(WP), " Epoch ": epoch})
     wandb.log({" TP ": tp, " Epoch ": epoch})

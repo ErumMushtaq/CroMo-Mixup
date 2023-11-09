@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
 # from dataloaders.dataloader_cifar10 import get_cifar10
-from utils.eval_metrics import linear_evaluation, get_t_SNE_plot
+from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, linear_evaluation_task_confusion
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 # from models.simsiam import Encoder, Predictor, SimSiam, InfoMax, BarlowTwins
@@ -110,6 +110,7 @@ def add_args(parser):
 
     parser.add_argument("--normalize_on", action="store_true", help='l2 normalization after projection MLP')
     parser.add_argument('--scale_loss', type=float, default=0.025)
+    parser.add_argument("--is_debug", action="store_true", help='debug or not')
 
     args = parser.parse_args()
     return args
@@ -216,7 +217,7 @@ if __name__ == "__main__":
     print("Creating Dataloaders..")
     #Class Based
 
-    print(num_worker)
+    # print(num_worker)
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
@@ -284,7 +285,10 @@ if __name__ == "__main__":
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
-    lin_epoch = 100
+    if args.is_debug:
+        lin_epoch = 1
+    else:
+        lin_epoch = 100
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
@@ -300,9 +304,35 @@ if __name__ == "__main__":
     _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
                                         classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
+
     test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_linear_all[0],
                                                                     test_data_loaders_all[0],lin_optimizer, classifier, 
                                                                     lin_scheduler, epochs=lin_epoch, device=device)
+    # save your encoder network
+    save_checkpoint({
+                    'epoch': args.epochs + 1,
+                    'arch': 'resnet18',
+                    'lr': args.pretrain_base_lr,
+                    'state_dict': model.state_dict(),
+                    'optimizer' : optimizer.state_dict(),
+                    'loss': loss,
+                    'encoder': model.encoder.backbone.state_dict(),
+                    'classifier': classifier.state_dict(),
+                }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_algo_{}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.appr, args.class_split, args.pretrain_batch_size))
+
+    args.class_split = args.val_class_split
+    wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
+    
+    # wp = linear_evaluation_WP(model, classifier, test_data_loaders, args, device)
+    # tp = linear_evaluation_TP(model, classifier, test_data_loaders, args, device)
+
+    print(' Linear Acc '+str(test_acc1))
+    print(" Linear WP "+str(wp))
+    print(" Linear TP "+str(tp))
+    print(" wp* tp "+str(wp*tp*100))
+    # assert test_acc1== wp*tp
+
+                     
     # lin_epoch = 100
     # classifier = LinearClassifier().to(device)
     # lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
@@ -314,17 +344,7 @@ if __name__ == "__main__":
     get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
 
 
-    # save your encoder network
-    save_checkpoint({
-                    'epoch': args.epochs + 1,
-                    'arch': 'resnet18',
-                    'lr': args.pretrain_base_lr,
-                    'state_dict': model.state_dict(),
-                    'optimizer' : optimizer.state_dict(),
-                    'loss': loss,
-                    'encoder': model.encoder.backbone.state_dict(),
-                    'classifier': classifier.state_dict(),
-                }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.class_split, args.pretrain_batch_size))
+
 
 
 
