@@ -8,7 +8,7 @@ from sklearn.utils import shuffle
 from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset
 
 
-def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8):
+def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8, valid_transform = None):
 
     ind = np.cumsum(classes)[:-1]
     tasks = np.split(np.arange(sum(classes)), ind, axis=0)
@@ -58,21 +58,27 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
 
         data_normalize_mean = (0.5071, 0.4865, 0.4409)
         data_normalize_std = (0.2673, 0.2564, 0.2762)
-
-        random_crop_size = 32
-        transform_test = transforms.Compose([
-                transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC, antialias=True), 
-                transforms.CenterCrop(random_crop_size),
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ] )
         transform_knn = transforms.Compose( [   
                 transforms.Normalize(data_normalize_mean, data_normalize_std),
             ])
-        transform_linear = transforms.Compose( [
-                transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
-                transforms.RandomHorizontalFlip(),
-                transforms.Normalize(data_normalize_mean, data_normalize_std),
-            ] )
+
+        random_crop_size = 32
+        if valid_transform is None:
+            transform_test = transforms.Compose([
+                    transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC, antialias=True), 
+                    transforms.CenterCrop(random_crop_size),
+                    transforms.Normalize(data_normalize_mean, data_normalize_std),
+                ] )
+
+            transform_linear = transforms.Compose( [
+                    transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                    transforms.RandomHorizontalFlip(),
+                    transforms.Normalize(data_normalize_mean, data_normalize_std),
+                ] )
+        else:
+            transform_test = valid_transform
+            transform_linear = valid_transform
+            linear_batch_size = 128
 
         linear_batch_size = 256    
         train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)

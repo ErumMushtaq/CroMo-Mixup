@@ -437,7 +437,7 @@ def train_barlow_diffusion(model, train_data_loaders, knn_train_data_loaders, te
     
         if task_id < len(train_data_loaders)-1:
             if args.is_debug is not True:
-                lin_epoch = 100
+                lin_epoch = 1
             else:
                 lin_epoch = 1
             num_class = np.sum(args.class_split[:task_id+1])
@@ -497,11 +497,11 @@ def train_diffusion_model(model, noise_scheduler, args, train_dataloader, test_d
             else:
                 labels = None
             if task_id > 0: # sample images from the old model
-                x_old = torch.Tensor([])
-                y_old = torch.Tensor([])
-                indices = np.random.choice(len(memory_x), size=min(args.diff_train_bs, len(memory)), replace=False)
+                x_old = torch.Tensor([]).to(device)
+                y_old = torch.Tensor([]).to(device)
+                indices = np.random.choice(len(memory_x), size=min(args.diff_train_bs, len(memory_x)), replace=False)
                 for ind in indices:
-                    x_old = torch.cat((x_old, diff_transform(memory_x[ind:ind+1])), dim=0)
+                    x_old = torch.cat((x_old, diffusion_tr(memory_x[ind:ind+1])), dim=0)
                     if args.class_condition:
                         y_old = torch.cat((y_old, memory_y[ind:ind+1]), dim=0)
                     if args.clustering_label:
@@ -509,8 +509,8 @@ def train_diffusion_model(model, noise_scheduler, args, train_dataloader, test_d
                     x_old = x_old.to(device)
                 if labels is not None:
                     y_old = y_old.to(device)
-                    labels = torch.cat((labels, y_old), dim = 0)
-                images = torch.cat([images, x1_], dim = 0)
+                    labels = torch.cat((labels, y_old), dim = 0).long()
+                images = torch.cat([images, x_old], dim = 0)
 
             timesteps = torch.randint(low=1, high=args.num_train_timesteps, size=(images.shape[0],)).to(device)
             noise = torch.randn_like(images)
@@ -561,6 +561,7 @@ def train_diffusion_model(model, noise_scheduler, args, train_dataloader, test_d
 
 def sample_images(model, n, args, device, noise_scheduler, task_id, cluster_centers):
     model.eval()
+    model.to(device)
     if args.clustering_label or args.class_condition:
         if n > cluster_centers: #add logic of classes seen so far
             num = int(n/cluster_centers)
@@ -582,7 +583,7 @@ def sample_images(model, n, args, device, noise_scheduler, task_id, cluster_cent
                 if args.unet_model == 'diffusers':
                     predicted_noise = model(x, t, labels).sample
                 else:
-                    ts = (torch.ones(sampled_bs) * t).long().to(device)
+                    ts = (torch.ones(sampled_bs) * t.to('cpu')).long().to(device)
                     predicted_noise = model(x, ts, labels)
             x = noise_scheduler.step(predicted_noise, t, x).prev_sample
             if args.is_debug:

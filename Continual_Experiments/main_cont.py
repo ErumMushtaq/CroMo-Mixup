@@ -331,6 +331,12 @@ if __name__ == "__main__":
             transform_knn = T.Compose( [   
                 T.Normalize(data_normalize_mean, data_normalize_std),
             ])
+        elif args.dataset == 'cifar100':
+            data_normalize_mean = (0.5071, 0.4865, 0.4409)
+            data_normalize_std = (0.2673, 0.2564, 0.2762)
+            transform_knn = T.Compose( [   
+                T.Normalize(data_normalize_mean, data_normalize_std),
+            ])
         #Dataloaders
         print("Creating Diffusion Dataloaders..")
         batch_size = args.diff_train_bs
@@ -377,6 +383,9 @@ if __name__ == "__main__":
         # diffusion = GaussianDiffusion(betas, args, model_mean_type, model_var_type, loss_type)
         if args.noise_scheduler == 'DDPM':
             noise_scheduler = DDPMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler)
+        elif args.noise_scheduler == 'DDIM':
+            noise_scheduler = DDIMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler, rescale_betas_zero_snr=True, timestep_spacing="trailing")
+            noise_scheduler.set_timesteps(num_inference_steps=args.num_inference_steps, device=device)
 
     #Training
     print("Starting Training..")
