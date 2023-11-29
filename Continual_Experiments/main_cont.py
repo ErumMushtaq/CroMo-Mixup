@@ -192,9 +192,11 @@ def add_args(parser):
     parser.add_argument('--diff_train_bs', type=int, default=100)
     parser.add_argument('--replay_bs', type=int, default=128)
     parser.add_argument("--class_condition", action="store_true", help='calculate_fid or not')
+    parser.add_argument("--augment_seq", action="store_true", help='augmentation type')
     parser.add_argument("--clustering_label", action="store_true", help='calculate_fid or not')
     parser.add_argument("--is_debug", action="store_true", help='debug or not')
     parser.add_argument('--image_report_freq', type=int, default=10)
+    parser.add_argument('--cond_dim', type=int, default=1000, help='512, 1000, 5000')
 
     args = parser.parse_args()
     return args
@@ -246,6 +248,8 @@ if __name__ == "__main__":
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
                 T.Normalize(mean=mean, std=std)])
+
+
     
     if 'infomax' in args.appr:
         min_scale = 0.08
@@ -355,14 +359,19 @@ if __name__ == "__main__":
                 class_numbers = 200*len(args.class_split)
             else:
                 class_numbers = num_classes
-            diffusion_model = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=3,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2, 3, 4),num_classes=class_numbers, use_checkpoint=False, use_fp16=False, num_head_channels=64, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True)
-            
-            # #self-guided diffusion model -> unet_fast
-            # attention_resolutions= '128' #32,16,8
-            # attention_ds = []
-            # for res in attention_resolutions.split(","):
-            #     attention_ds.append(args.image_size // int(res))
-            # diffusion_ = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=2,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2,  4),num_classes=10, use_checkpoint=False, use_fp16=False, num_head_channels=8, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True)
+            diffusion_model = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=3,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2, 3, 4),num_classes=class_numbers, use_checkpoint=False, use_fp16=False, num_head_channels=64, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True, cond_dim=args.cond_dim)
+        elif args.unet_model == 'unet_fast':   
+            #self-guided diffusion model -> unet_fast
+            attention_resolutions= '4' #32,16,8
+            attention_ds = []
+            if args.clustering_label:
+                class_numbers = 200*len(args.class_split)
+            else:
+                class_numbers = num_classes
+            model_channels= 128
+            for res in attention_resolutions.split(","):
+                attention_ds.append(args.image_size // int(res))
+            diffusion_model = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=2,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2,  4),num_classes=class_numbers, use_checkpoint=False, use_fp16=False, num_head_channels=8, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True, cond_dim=args.cond_dim)
 
         # diffuser library based scheduler
         # diffusion = create_gaussian_diffusion(
@@ -384,12 +393,12 @@ if __name__ == "__main__":
         if args.noise_scheduler == 'DDPM':
             noise_scheduler = DDPMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler)
         elif args.noise_scheduler == 'DDIM':
-            noise_scheduler = DDIMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler, rescale_betas_zero_snr=True, timestep_spacing="trailing")
+            noise_scheduler = DDIMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler,  timestep_spacing="trailing")#rescale_betas_zero_snr=True
             noise_scheduler.set_timesteps(num_inference_steps=args.num_inference_steps, device=device)
 
     #Training
     print("Starting Training..")
-    if args.appr == 'barlow_diffusion':
+    if args.appr == 'barlow_diffusion' or args.appr == 'basic_dino':
         print(args.appr)
         model, loss, optimizer = train_barlow_diffusion(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, diffusion_model, noise_scheduler, train_data_loaders_diffusion, test_data_loaders_diffusion, transform, transform_prime, diffusion_tr, transform_knn )
     elif args.appr == 'diffusion':

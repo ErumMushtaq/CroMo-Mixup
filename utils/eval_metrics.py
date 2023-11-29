@@ -28,7 +28,7 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
                 batch_size = inputs.size(0)
 
                 # forward
-                features = encoder(inputs)
+                features = encoder(inputs).squeeze()
                 features = nn.functional.normalize(features)
                 train_features.append(features.data.t())
                 train_labels.append(t_label.to(device))
@@ -42,6 +42,7 @@ def Knn_Validation_cont(encoder,train_data_loaders,test_data_loaders,device=None
     total = 0
     correct = 0
     C = train_labels_all[-1].max() + 1
+    # print(C)
     top1 = 0
     task_acc=[]
     with torch.no_grad():

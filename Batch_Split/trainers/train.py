@@ -13,6 +13,37 @@ from dataloaders.dataset import TensorDataset
 from tqdm import tqdm
 from utils.lars import LARS
 import torch.nn as nn
+from copy import deepcopy
+
+
+class EMA:
+    def __init__(self, beta):
+        super().__init__()
+        self.beta = beta
+        self.step = 0
+
+    def update_model_average(self, ma_model, current_model):
+        for current_params, ma_params in zip(current_model.parameters(), ma_model.parameters()):
+            old_weight, up_weight = ma_params.data, current_params.data
+            ma_params.data = self.update_average(old_weight, up_weight)
+        # ma_model.load_state_dict(ma_params)
+        return ma_model
+
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.beta + (1 - self.beta) * new
+
+    def step_ema(self, ema_model, model, step_start_ema=2000):
+        # if self.step < step_start_ema:
+        #     self.reset_parameters(ema_model, model)
+        #     self.step += 1
+        #     return
+        self.update_model_average(ema_model, model)
+        self.step += 1
+
+    def reset_parameters(self, ema_model, model):
+        ema_model.load_state_dict(model.state_dict())
 
 def update_moving_average(new_model, old_model):
     for current_params, ma_params in zip(new_model.parameters(), old_model.parameters()):
@@ -418,26 +449,102 @@ def train_simsiam(model, train_data_loaders, test_data_loaders, train_data_loade
         wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch})  
         wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch})
 
-    # WP = []
-    # for i in range(len(args.val_class_split)):
-    #     lin_epoch = 100
-    #     num_class = args.val_class_split[i]
-    #     classifier = LinearClassifier(num_classes = num_class).to(device)
-    #     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-    #     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-    #     _, wp, _ =  linear_evaluation(model, train_data_loaders_linear[i], test_data_loaders[i], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, i, args)  
-    #     WP.append(wp)
-
-    # #TP
-    # lin_epoch = 100
-    # num_class = len(args.val_class_split) #total number of tasks
-    # classifier = LinearClassifier(num_classes = num_class).to(device)
-    # lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-    # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-    # _, tp, _ = linear_evaluation_TP(model, train_data_loaders_linear[:], test_data_loaders[:], lin_optimizer, classifier, lin_scheduler, lin_epoch, device, 0, args) 
-
     wandb.log({" WP ": np.mean(WP), " Epoch ": epoch})
     wandb.log({" TP ": tp, " Epoch ": epoch})
+
+    return model, loss_, optimizer
+
+def loss_func(x, y):
+   # L2 normalization
+   x = F.normalize(x, dim=-1, p=2)
+   y = F.normalize(y, dim=-1, p=2)
+   return 2 - 2 * (x * y).sum(dim=-1)
+
+def collect_params(model, exclude_bias_and_bn=True):
+    param_list = []
+    for name, param in model.named_parameters():
+        if exclude_bias_and_bn and any(
+            s in name for s in ['bn', 'downsample.1', 'bias']):
+            param_dict = {
+                'params': param,
+                'weight_decay': 0.,
+                'lars_exclude': True}
+            # NOTE: with the current pytorch lightning bolts
+            # implementation it is not possible to exclude 
+            # parameters from the LARS adaptation
+        else:
+            param_dict = {'params': param}
+        param_list.append(param_dict)
+    return param_list
+
+def train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args):
+    # ema_model = self.model._get_teacher()
+    
+    # ema_model = deepcopy(model).requires_grad_(False)
+    # ema = EMA(0.995)
+    # init_lr = args.pretrain_base_lr
+    init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
+
+    model_parameters = collect_params(model)
+
+    optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
+    # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
+    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
+    scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs,warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
+    loss_ = []
+    step_number = 0
+    for epoch in range(args.epochs):
+        start = time.time()
+        model.train()
+        epoch_loss = []
+        for data in zip(*train_data_loaders):
+            for x1, x2, y in data: 
+                x1, x2 = x1.to(device), x2.to(device)
+                f1 = model.encoder.backbone(x1).squeeze() # NxC
+                f2 = model.encoder.backbone(x2).squeeze() # NxC
+                z1 = model.encoder.projector(f1) # NxC
+                z2 = model.encoder.projector(f2) # NxC
+
+                p1 = model.predictor(z1) # NxC
+                p2 = model.predictor(z2) # NxC   
+
+                with torch.no_grad():
+                    target_z1 = model.teacher_model(x1)
+                    target_z2 = model.teacher_model(x2)
+
+                loss_one = loss_func(p1, target_z2.detach())
+                loss_two = loss_func(p2, target_z1.detach())
+                loss = 0.5*loss_one + 0.5*loss_two
+                loss = loss.mean()
+
+                epoch_loss.append(loss.item())
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                step_number += 1 
+                model.update_moving_average(step_number)
+                # ema_model = ema.update_model_average(ema_model, model)
+                if args.is_debug:
+                    break
+            if args.is_debug:
+                break
+
+        scheduler.step()
+        loss_.append(np.mean(epoch_loss))
+        end = time.time()
+        print('epoch end')
+        # print('epoch end')
+        if (epoch+1) % args.knn_report_freq == 0:
+            knn_acc, task_acc_arr = Knn_Validation_cont(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
+            wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch})
+            #WP
+            # if (epoch+1) % args.knn_report_freq*1 == 0:
+            print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
+        else:
+            print(f'Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
+    
+        wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch})  
+        wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch})
 
     return model, loss_, optimizer
 

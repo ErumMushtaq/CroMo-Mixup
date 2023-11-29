@@ -19,7 +19,7 @@ from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 # from models.simsiam import Encoder, Predictor, SimSiam, InfoMax, BarlowTwins
 # from trainers.train_dist_ering import 
-from trainers.train import train_infomax, train_barlow, train_simsiam
+from trainers.train import train_infomax, train_barlow, train_simsiam, train_byol
 from trainers.train_sup import train_sup
 from trainers.train_concat import train_concate
 from models.resnet import resnetc18
@@ -27,9 +27,22 @@ from models.resnet_org import resnetc18_bn
 # from transform import get_transform
 import random
 import torch.nn as nn
+import warnings
 
+warnings.filterwarnings("ignore")
 os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
 os.environ["CUDA_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
+
+class RandomApply(nn.Module):
+    def __init__(self, fn, p):
+        super().__init__()
+        self.fn = fn
+        self.p = p
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        return self.fn(x)
+
 
 class Solarization:
     def __call__(self, img: Image) -> Image:
@@ -74,6 +87,7 @@ def add_args(parser):
     # parser.add_argument('--dataset', type=str, default='cifar10', help='cifar10, cifar100')
 
     parser.add_argument('-d','--dataset', type=str, default='cifar10', help='cifar10, cifar100')
+    parser.add_argument('-dl_type','--dataset_type', type=str, default='class_incremental', help='cifar10, cifar100')
     parser.add_argument('--epochs', type=int, default=1000)
     parser.add_argument('--knn_report_freq', type=int, default=1)
     # parser.add_argument('--proj_hidden', type=int, default=2048)
@@ -187,6 +201,26 @@ if __name__ == "__main__":
                 T.RandomApply([GaussianBlur()], p=0.1),
                 # T.RandomApply([GaussianBlur()], p=0.5), 
                 T.Normalize(mean=mean, std=std)])
+
+    #https://github.com/The-AI-Summer/byol-cifar10/blob/main/AI_Summer_BYOL_in_CIFAR10.ipynb
+    if 'byol' in args.appr: # SImCLR augmentation (ref: https://github.com/lucidrains/byol-pytorch/blob/master/byol_pytorch/byol_pytorch.py)
+        transform = T.Compose([
+            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(p=0.5),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+            T.RandomResizedCrop((32, 32)),
+            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+
+        transform_prime = T.Compose([
+            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(p=0.5),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+            T.RandomResizedCrop((32, 32)),
+            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+
+
     if 'barlow' in args.appr: #ref: they do not have Gaussian Blur https://github.com/vturrisi/solo-learn/blob/main/scripts/pretrain/cifar/augmentations/asymmetric.yaml
         min_scale = 0.08
         transform = T.Compose([
@@ -219,10 +253,10 @@ if __name__ == "__main__":
 
     # print(num_worker)
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
-                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = args.dataset_type)
 
-    _, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
-                                        classes=args.val_class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+    # _, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
+    #                                     classes=args.val_class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
     # train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
     #                                     classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
@@ -236,8 +270,8 @@ if __name__ == "__main__":
     #                                     classes=[10], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
-    if 'simsiam' in args.appr:
-        print("Creating Model for Simsiam..")
+    if 'simsiam' in args.appr or 'byol' in args.appr:
+        print("Creating Model for Simsiam or BYOL..")
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
         pred_hidden = args.pred_hidden
@@ -249,6 +283,8 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
+        if 'byol' in args.appr:
+            model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
         model.to(device) #automatically detects from model
         # encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
         # predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
@@ -277,6 +313,8 @@ if __name__ == "__main__":
                 model, loss, optimizer = train_barlow(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
             elif 'simsiam' in args.appr:
                 model, loss, optimizer = train_simsiam(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
+            elif 'byol' in args.appr:
+                model, loss, optimizer = train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
         else:
             # train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
             #                                 classes=[10], valid_rate = 0.00, batch_size=10, seed = 0, num_worker= num_worker)

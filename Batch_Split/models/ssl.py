@@ -5,6 +5,8 @@
 # LICENSE file in the root directory of this source tree.
 
 import torch
+import copy
+import math
 from torch import nn, optim
 import torch.nn.functional as F
 from models.resnet import resnetc18
@@ -14,6 +16,26 @@ def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
     y = F.normalize(y, dim=-1, p=2)
     return  - (x * y).sum(dim=-1).mean()
+
+class EMA():
+    def __init__(self, base_momentum, final_momentum, max_steps):
+        super().__init__()
+        self.alpha = base_momentum
+        self.final_alpha = final_momentum
+        self.base_alpha = base_momentum
+        self.max_steps = max_steps
+
+    def update_average(self, old, new):
+        if old is None:
+            return new
+        return old * self.alpha + (1 - self.alpha) * new
+
+    def update_alpha(self, current_step):
+        self.alpha = self.final_alpha - \
+            (self.final_alpha - self.base_alpha) * \
+            (math.cos(math.pi * current_step / self.max_steps) + 1) / 2
+        # print(self.alpha)
+
 
 
 class Encoder(nn.Module):
@@ -53,6 +75,13 @@ class Encoder(nn.Module):
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ReLU(inplace=True),
                 nn.Linear(hidden_dim, output_dim),)
+        if 'byol' in appr_name:
+            self.projector = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, output_dim),)
+
 
     def forward(self, x):
         out = self.backbone(x).squeeze()
@@ -80,6 +109,28 @@ class SimSiam(nn.Module):
         self.encoder = encoder
         self.predictor = predictor
         self.temporal_projector = None
+        self.teacher_model = copy.deepcopy(self.encoder).requires_grad_(False)
+        # self.target_ema_updater = EMA(0.996)
+
+    def initialize_EMA(self, base_momentum, final_momentum, max_steps):
+        self.target_ema_updater = EMA(base_momentum, final_momentum, max_steps)
+
+    @torch.no_grad()
+    def _get_teacher(self):
+        return self.teacher_model
+
+
+    @torch.no_grad()
+    def update_moving_average(self, step):
+        assert self.teacher_model is not None, 'target encoder has not been created yet'
+
+        for student_params, teacher_params in zip(self.encoder.parameters(), self.teacher_model.parameters()):
+            old_weight, up_weight = teacher_params.data, student_params.data
+            teacher_params.data = self.target_ema_updater.update_average(old_weight, up_weight)
+        self.target_ema_updater.update_alpha(step)
+
+    
+
         
     def forward(self, x1, x2=None, projector = False):
         device = next(self.parameters()).device
