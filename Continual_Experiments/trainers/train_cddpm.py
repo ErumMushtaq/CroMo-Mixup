@@ -574,10 +574,10 @@ def train_diffusion_model(model, noise_scheduler, args, train_dataloader, test_d
         #     print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(loss_):.4f} ')
         wandb.log({"train_mse": np.mean(loss_), "learning_rate": diff_scheduler.get_last_lr()[0]})        
         wandb.log({"train_mse": np.mean(loss_),"epoch": epoch})
-        file_name = './checkpoints/checkpoint_diff_model_'+ str(args.dataset) +'-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size)+ '.pth.tar'
-        torch.save({
-                       'state_dict': ema_model.state_dict(),
-                   }, file_name)
+    file_name = './checkpoints/checkpoint_diff_model_'+ str(args.dataset) +'-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size)+ '.pth.tar'
+    torch.save({
+                    'state_dict': ema_model.state_dict(),
+                }, file_name)
     return ema_model.state_dict()
 
 

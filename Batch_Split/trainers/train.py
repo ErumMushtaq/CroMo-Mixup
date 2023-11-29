@@ -478,18 +478,12 @@ def collect_params(model, exclude_bias_and_bn=True):
     return param_list
 
 def train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args):
-    # ema_model = self.model._get_teacher()
-    
-    # ema_model = deepcopy(model).requires_grad_(False)
-    # ema = EMA(0.995)
-    # init_lr = args.pretrain_base_lr
+
     init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
 
     model_parameters = collect_params(model)
 
     optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
-    # optimizer = torch.optim.SGD(model.parameters(), lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay)
-    # scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs) #eta_min=2e-4 is removed scheduler + values ref: infomax paper
     scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs,warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
     loss_ = []
     step_number = 0
@@ -499,6 +493,7 @@ def train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_
         epoch_loss = []
         for data in zip(*train_data_loaders):
             for x1, x2, y in data: 
+                # print(y)
                 x1, x2 = x1.to(device), x2.to(device)
                 f1 = model.encoder.backbone(x1).squeeze() # NxC
                 f2 = model.encoder.backbone(x2).squeeze() # NxC

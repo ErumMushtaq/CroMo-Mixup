@@ -70,8 +70,6 @@ def add_args(parser):
     return a parser added with args required by fit
     """
 
-    # parser.add_argument('-n','--normalization', type=str, default='batch', help='normalization method: batch, group or none')
-    # parser.add_argument('--weight_standard', action='store_true', default=True, help='weight standard for conv layers')
 
     # Training settings
     parser.add_argument('-bs','--pretrain_batch_size', type=int, default=512)
@@ -255,19 +253,6 @@ if __name__ == "__main__":
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = args.dataset_type)
 
-    # _, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
-    #                                     classes=args.val_class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-
-    # train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure = get_dataloaders(transform, transform_prime, \
-    #                                     classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-
-    # _, train_data_loaders_knn_all, test_data_loaders_all, _, train_data_loaders_linear_all, _ = get_dataloaders(transform, transform_prime, \
-    #                                     classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
-
-    # train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders = get_cifar10(transform, transform_prime, \
-    #                                     classes=args.class_split, valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
-    # train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
-    #                                     classes=[10], valid_rate = 0.00, batch_size=args.pretrain_batch_size, seed = 0, num_worker= num_worker)
 
     #Create Model
     if 'simsiam' in args.appr or 'byol' in args.appr:
@@ -276,20 +261,13 @@ if __name__ == "__main__":
         proj_out = args.proj_out
         pred_hidden = args.pred_hidden
         pred_out = args.pred_out
-        # proj_hidden = args.proj_hidden
-        # proj_out = args.proj_out
-        # pred_hidden = 512
-        # pred_out = 2048
+
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
         if 'byol' in args.appr:
             model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
         model.to(device) #automatically detects from model
-        # encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard)
-        # predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
-        # model = SimSiam(encoder, predictor)
-        # model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr:
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
@@ -316,9 +294,6 @@ if __name__ == "__main__":
             elif 'byol' in args.appr:
                 model, loss, optimizer = train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
         else:
-            # train_data_loaders_all, train_data_loaders_knn_all, test_data_loaders_all, validation_data_loaders_all = get_cifar10(transform, transform_prime, \
-            #                                 classes=[10], valid_rate = 0.00, batch_size=10, seed = 0, num_worker= num_worker)
-            # train_data_loaders.append(train_data_loaders_all[0])
             model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
 
     #Test Linear classification acc
@@ -360,22 +335,12 @@ if __name__ == "__main__":
 
     args.class_split = args.val_class_split
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
-    
-    # wp = linear_evaluation_WP(model, classifier, test_data_loaders, args, device)
-    # tp = linear_evaluation_TP(model, classifier, test_data_loaders, args, device)
+
 
     print(' Linear Acc '+str(test_acc1))
     print(" Linear WP "+str(wp))
     print(" Linear TP "+str(tp))
     print(" wp* tp "+str(wp*tp*100))
-    # assert test_acc1== wp*tp
-
-                     
-    # lin_epoch = 100
-    # classifier = LinearClassifier().to(device)
-    # lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
-    # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
-    # test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_knn_all[0],test_data_loaders_all[0],lin_optimizer, classifier, lin_scheduler, epochs=lin_epoch, device=device) 
 
     #T-SNE Plot
     print("Starting T-SNE Plot..")

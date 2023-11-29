@@ -91,7 +91,7 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
             validation_data_loaders.append(DataLoader(TensorDataset(xvalid,yvalid,transform=transform), batch_size=batch_size, shuffle=False, num_workers = 8))
             train_data_loaders_linear.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_linear), batch_size=linear_batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
             train_data_loaders_generic.append(DataLoader(GenericDataset(xtrain, ytrain,transforms=None), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
-    else: #Domain Increment
+    else: #Data Increment
         xtrain_by_class = []
         ytrain_by_class = []
         xtest_by_class = []
@@ -105,29 +105,15 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
             ytest_by_class.append([t]*len(ind_))
         
         xtrain_by_class = torch.Tensor(np.array(xtrain_by_class)/255).permute(0,1, 4, 2, 3) #0th index for the class ID, rest is on the format 0,3,1,2
-        # ytrain = torch.tensor(np.array(ytrain).reshape(-1),dtype=int)
         ytrain_by_class = torch.Tensor(np.array(ytrain_by_class))
         xtest_by_class = torch.Tensor(np.array(xtest_by_class)/255).permute(0,1, 4, 2, 3)
         ytest_by_class = torch.Tensor(np.array(ytest_by_class))
 
-        # r=np.arange(len(xtrain_by_class))
-        # r=np.array(shuffle(r,random_state=seed),dtype=int)
-        # nvalid=int(valid_rate*len(r))
-        # ivalid=r[:nvalid]
-        # itrain=r[nvalid:]
-        # xvalid = xtrain_by_class[ivalid].clone()
-        # yvalid = ytrain_by_class[ivalid].clone()
-        # xtrain_by_class = xtrain_by_class[itrain].clone()
-        # ytrain_by_class = ytrain_by_class[itrain].clone()
-
         train_num = int(xtrain_by_class.shape[1]/len(tasks)) #total images per class/# of tasks
         test_num = int(xtest_by_class.shape[1]/len(tasks))
-        # print(train_num)
-        # exit()
+
         for t in range(len(tasks)):
             nvalid = int(valid_rate*train_num)
-            # ivalid = r[:nvalid]
-            # itrain = r[nvalid:]
 
             xvalid = xtrain_by_class[:, t*(train_num):t*(train_num)+nvalid].clone().reshape(-1, 3, 32, 32)
             yvalid = ytrain_by_class[:, t*(train_num):t*(train_num)+nvalid].clone().reshape(-1).type(torch.int64)
