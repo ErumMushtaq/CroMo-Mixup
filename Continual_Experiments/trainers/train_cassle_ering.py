@@ -282,6 +282,7 @@ def train_cassle_barlow_ering(model, train_data_loaders, knn_train_data_loaders,
                             x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
                         x1_old, x2_old = x1_old.to(device), x2_old.to(device)
 
+
                         model, optimizer = process_batch_ering(x1, x2, x1_old, x2_old, model, cross_loss, oldModel, optimizer, epoch_loss, args)
 
                 epoch_counter += 1

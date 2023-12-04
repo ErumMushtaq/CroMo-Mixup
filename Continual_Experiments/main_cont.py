@@ -18,7 +18,7 @@ from torchvision import transforms as T, utils
 
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
-from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, Knn_Validation
+from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, Knn_Validation, linear_evaluation_task_confusion
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 from models.infomax_model import CovModel
@@ -53,6 +53,7 @@ from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow
 from trainers.train_dist_ering import train_dist_ering_infomax
 from trainers.train_cassle_ering import train_cassle_barlow_ering
+from trainers.train_cassle_contrast import train_cassle_barlow_ering_contrast
 from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 from trainers.train_cassle_cosine import train_cassle_cosine_barlow
 from trainers.train_cassle_cosine_linear import train_cassle_cosine_linear_barlow
@@ -479,6 +480,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cosine_ering_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     elif args.appr == 'gpm_barlow': #gpm+barlow
         model, loss, optimizer = train_gpm_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args) 
+    elif args.appr == 'barlow_ering_contrast' or args.appr == 'barlow_ering_negcontrast':
+        model, loss, optimizer = train_cassle_barlow_ering_contrast(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
     elif args.appr == 'gpm_cosine_barlow': #gpm+barlow
         model, loss, optimizer = train_gpm_cosine_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
     else:
@@ -508,7 +511,7 @@ if __name__ == "__main__":
     # print("Starting T-SNE Plot..")
     # get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
 
-
+    wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
     file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 
     # save your encoder network
     save_checkpoint({

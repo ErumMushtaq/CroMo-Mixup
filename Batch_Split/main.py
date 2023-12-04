@@ -334,6 +334,8 @@ if __name__ == "__main__":
                 }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_algo_{}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.appr, args.class_split, args.pretrain_batch_size))
 
     args.class_split = args.val_class_split
+    _, _, test_data_loaders, _, _, _, _ = get_dataloaders(transform, transform_prime, \
+                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = "class_incremental")
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
 
 
