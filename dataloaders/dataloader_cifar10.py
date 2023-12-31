@@ -5,10 +5,10 @@ import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
-from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, Diffusion_Dataset
+from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, Diffusion_Dataset, Org_SimSiam_Dataset
 
 
-def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8, valid_transform = None):
+def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8, valid_transform = None, dl_type = 'class_incremental', org_data = False):
 
     ind = np.cumsum(classes)[:-1]
     tasks = np.split(np.arange(sum(classes)), ind, axis=0)
@@ -81,8 +81,11 @@ def get_cifar10(transform=None, transform_prime=None, classes=[5,5], valid_rate 
             linear_batch_size = 128
 
         
-
-        train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+        if org_data == False:
+            train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+        else:
+            train_dataset = Org_SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+        # train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
         train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True, timeout=200))
         train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=knn_transform), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
         train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))

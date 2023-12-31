@@ -53,7 +53,7 @@ from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow
 from trainers.train_dist_ering import train_dist_ering_infomax
 from trainers.train_cassle_ering import train_cassle_barlow_ering
-from trainers.train_cassle_contrast import train_cassle_barlow_ering_contrast
+# from trainers.train_cassle_contrast import train_infomax_iomix, train_cassle_infomax_mixed_distillation, train_cassle_barlow_ering_contrast, train_cassle_barlow_mixed_distillation, train_cassle_barlow_principled_iomix, train_cassle_barlow_iomixup, train_cassle_barlow_inputmixup
 from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 from trainers.train_cassle_cosine import train_cassle_cosine_barlow
 from trainers.train_cassle_cosine_linear import train_cassle_cosine_linear_barlow
@@ -62,6 +62,10 @@ from trainers.train_GPM import train_gpm_barlow
 from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
+from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup
+from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation
+from trainers.train_cassle_contrast import  train_cassle_barlow_ering_contrast,  train_cassle_barlow_principled_iomix, train_cassle_barlow_inputmixup
+
 
 
 # from torchsummary import summary
@@ -199,6 +203,10 @@ def add_args(parser):
     parser.add_argument('--image_report_freq', type=int, default=10)
     parser.add_argument('--cond_dim', type=int, default=1000, help='512, 1000, 5000')
 
+    parser.add_argument('--temp_proj', type=str, default='nonlinear', help='nonlinear, identity')
+    parser.add_argument('--transform', type=str, default='original', help='original, basic')
+    parser.add_argument('--alpha', type=float, default=1.0)
+
     args = parser.parse_args()
     return args
 
@@ -234,6 +242,8 @@ if __name__ == "__main__":
                 name= str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" 
                 + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split))
 
+    transform2 = []
+    transform2_prime = []
     if 'simsiam' in args.appr:
         #augmentations
         transform = T.Compose([
@@ -278,7 +288,7 @@ if __name__ == "__main__":
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
-                T.RandomApply([GaussianBlur()], p=0.0), 
+                T.RandomApply([GaussianBlur()], p=0.0), #0.0
                 T.RandomSolarize(0.51, p=0.0), 
                 T.Normalize(mean=mean, std=std)])
 
@@ -290,15 +300,37 @@ if __name__ == "__main__":
                 T.RandomApply([GaussianBlur()], p=0.0),
                 T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
+
+        if 'inputmix' in args.appr: #https://github.com/divyam3897/UCL/blob/cfaa81d1af867afa9f35ff5d27d05404e212811b/datasets/seq_cifar100.py#L47
+            cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
+            print('LUMP transform')
+            transform = T.Compose(
+                [T.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
+                T.RandomHorizontalFlip(),
+                T.Normalize(*cifar_norm)])
+            transform_prime = T.Compose(
+                [T.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
+                T.RandomHorizontalFlip(),
+                T.Normalize(*cifar_norm)])
+
+        
+        # if args.transform == 'basic':
+        transform2 = T.Compose([T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),), T.RandomHorizontalFlip(0.5), T.Normalize(mean=mean, std=std)])
+        transform2_prime = T.Compose([T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),), T.RandomHorizontalFlip(0.5),T.Normalize(mean=mean, std=std)])
+
     #Dataloaders
     print("Creating Dataloaders..")
 
     batch_size = args.pretrain_batch_size
+    if 'aug' in args.appr or 'mix' in args.appr:
+        org_data = True
+    else:
+        org_data = False
 
     # #Class Based
     #train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear, train_data_loaders_pure
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
-                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, org_data = org_data)
 
     #Create Model
     ##!!! Make these model arguments
@@ -374,23 +406,6 @@ if __name__ == "__main__":
                 attention_ds.append(args.image_size // int(res))
             diffusion_model = UNetModel(image_size=args.image_size, in_channels=3, model_channels=128,out_channels=3,num_res_blocks=2,attention_resolutions=tuple(attention_ds), dropout=0.1,channel_mult= (1, 2,  4),num_classes=class_numbers, use_checkpoint=False, use_fp16=False, num_head_channels=8, use_scale_shift_norm=True, resblock_updown=True, use_new_attention_order=True, cond_dim=args.cond_dim)
 
-        # diffuser library based scheduler
-        # diffusion = create_gaussian_diffusion(
-        # steps=diffusion_steps,
-        # learn_sigma=learn_sigma,
-        # sigma_small=sigma_small,
-        # noise_schedule=noise_schedule,
-        # use_kl=use_kl,
-        # predict_xstart=predict_xstart,
-        # rescale_timesteps=rescale_timesteps,
-        # rescale_learned_sigmas=rescale_learned_sigmas,
-        # timestep_respacing=timestep_respacing,
-        # )
-        # betas = gd.get_named_beta_schedule(args.beta_scheduler, args.num_train_timesteps)
-        # loss_type = gd.LossType.MSE
-        # model_mean_type = gd.ModelMeanType.EPSILON
-        # model_var_type = gd.ModelVarType.FIXED_LARGE #if do not want to learn thenn gd.ModelVarType.LEARNED_RANGE
-        # diffusion = GaussianDiffusion(betas, args, model_mean_type, model_var_type, loss_type)
         if args.noise_scheduler == 'DDPM':
             noise_scheduler = DDPMScheduler(num_train_timesteps=args.num_train_timesteps, beta_schedule=args.beta_scheduler)
         elif args.noise_scheduler == 'DDIM':
@@ -480,8 +495,20 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cosine_ering_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     elif args.appr == 'gpm_barlow': #gpm+barlow
         model, loss, optimizer = train_gpm_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args) 
-    elif args.appr == 'barlow_ering_contrast' or args.appr == 'barlow_ering_negcontrast':
-        model, loss, optimizer = train_cassle_barlow_ering_contrast(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
+    elif args.appr == 'barlow_ering_contrast' or args.appr == 'barlow_cassle_ering' or args.appr == 'barlow_ering_negcontrast' or args.appr == 'barlow_ering_augcontrast' or args.appr == 'barlow_ering_inputmixcontrast':
+        model, loss, optimizer = train_cassle_barlow_ering_contrast(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'barlow_inputmix':
+        model, loss, optimizer = train_cassle_barlow_inputmixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'barlow_iomix':
+        model, loss, optimizer = train_cassle_barlow_iomixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'infomax_iomix':
+        model, loss, optimizer = train_infomax_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'infomax_mixed_distillation':
+        model, loss, optimizer = train_cassle_infomax_mixed_distillation(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'barlow_principled_iomix':
+        model, loss, optimizer = train_cassle_barlow_principled_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'barlow_mixed_distillation':
+        model, loss, optimizer = train_cassle_barlow_mixed_distillation(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'gpm_cosine_barlow': #gpm+barlow
         model, loss, optimizer = train_gpm_cosine_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
     else:
