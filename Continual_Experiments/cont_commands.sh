@@ -116,6 +116,19 @@ python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --sim_loss_weight 250.
 
 python3 main_cont.py -cs 100 -e 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 128 --proj_hidden 4096  --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --cuda_device 6 --appr 'basic_infomax' --pretrain_base_lr 0.10 
 
+#CIFAR100 simclr non-continual
+python3 main_cont.py -cs 100 -e 1000 --dataset cifar100  --proj_out 128 --proj_hidden 2048 --cuda_device 2 --pretrain_batch_size 512 --appr 'basic_simclr' --pretrain_base_lr 0.6  --min_lr 1e-3 --temperature 0.5
+
+#CIFAR10 simclr non-continual
+python3 main_cont.py -cs 10 -e 1000 --dataset cifar10  --proj_out 128 --proj_hidden 2048 --cuda_device 0 --pretrain_batch_size 512 --appr 'basic_simclr' --pretrain_base_lr 0.6  --min_lr 1e-3 --temperature 0.5
+
+
+#CIFAR100 simclr ering
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100  --proj_out 128 --proj_hidden 2048 --cuda_device 7 --pretrain_batch_size 512 --appr 'ering_simclr' --pretrain_base_lr 0.6  --min_lr 1e-3 --temperature 0.5 --msize 500
+
+
+#CIFAR100 simclr cassle
+python3 main_cont.py -cs 20,20,20,20,20 -e 500,500,500,500,500 --dataset cifar100  --proj_out 128 --proj_hidden 2048 --cuda_device 7 --pretrain_batch_size 512 --appr 'cassle_simclr' --pretrain_base_lr 0.6  --min_lr 1e-3 --temperature 0.5
 
 
 #Hp search LRD+Replay
@@ -364,3 +377,10 @@ OMP_NUM_THREADS=8
 python3 main_cont.py -cs 5,5 -e 1,1 -de 1,1 --dataset cifar10 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 4 --appr 'barlow_diffusion' --pretrain_base_lr 0.1 --diff_train_bs 128 --sample_bs 64 --diff_weight_decay 5e-4 --diff_train_lr 1e-4 --unet_model openai  --msize 10000 --image_report_freq 49 --knn_report_freq 1 --class_condition --replay_bs 128 --is_debug 
 
 python3 main_cont.py -cs 5,5 -e 500,500 -de 500,500 --dataset cifar10 --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch --cuda_device 4 --appr 'barlow_diffusion' --pretrain_base_lr 0.1 --diff_train_bs 128 --sample_bs 64 --diff_weight_decay 5e-4 --diff_train_lr 1e-4 --unet_model openai  --msize 10000 --image_report_freq 49 --knn_report_freq 10 --clustering_label --replay_bs 128
+
+
+#tiny imagenet
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 2,2,2,2,2,2,2,2,2,2 --dataset tinyImagenet --normalization batch  --cuda_device 5 --appr 'basic_infomax' --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3  --pretrain_batch_size 256 --pretrain_base_lr 0.10  --same_lr
+python3 main_cont.py -cs 200 -e 800 --dataset tinyImagenet --sim_loss_weight 500.0 --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 6 --appr 'basic_infomax' --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --pretrain_batch_size 512 --la_R 0.1 --la_mu 0.1
+python3 main_cont.py -cs 200 -e 800 --dataset tinyImagenet --sim_loss_weight 500.0 --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 6 --appr 'basic_infomax' --pretrain_base_lr 0.01 --pretrain_weight_decay 1e-4 --pretrain_batch_size 512 --la_R 0.1 --la_mu 0.1
+python3 main_cont.py -cs 200 -e 800 --dataset tinyImagenet --sim_loss_weight 500.0 --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-4 --normalization batch  --cuda_device 6 --appr 'basic_infomax' --pretrain_base_lr 0.1  --pretrain_weight_decay 1e-4 --pretrain_batch_size 512 --la_R 0.1 --la_mu 0.1

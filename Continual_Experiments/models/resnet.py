@@ -34,8 +34,107 @@ class Conv2d(nn.Conv2d):
         return F.conv2d(x, weight, self.bias, self.stride,
                         self.padding, self.dilation, self.groups)
 
-class BasicBlock(nn.Module):
 
+
+class Bottleneck(nn.Module):
+    expansion = 4
+    def __init__(self, input_channels, output_channels, first_stride=1, projection=True, normalization = 'batch', weight_standard = False):
+        super(Bottleneck, self).__init__()
+        
+
+        if weight_standard == True:
+            self.conv1 = Conv2d(input_channels, output_channels, 
+                                    kernel_size=1, stride=1, padding=0, bias=False)
+        else:
+            self.conv1 = nn.Conv2d(input_channels, output_channels, 
+                                   kernel_size=1, stride=1, padding=0, bias=False)
+
+        if normalization == 'batch':
+            self.bn1 = nn.BatchNorm2d(output_channels)
+        elif normalization == 'group':
+            self.bn1 = nn.GroupNorm(64,output_channels)
+        else:
+            self.bn1 = nn.Identity()
+
+        # self.conv1 = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+        # self.batch_norm1 = nn.BatchNorm2d(out_channels)
+
+        if weight_standard == True:
+            self.conv2 = Conv2d(output_channels, output_channels, 
+                                    kernel_size=3, stride=first_stride, padding=1, bias=False)
+        else:
+            self.conv2 = nn.Conv2d(output_channels, output_channels, 
+                                   kernel_size=3, stride=first_stride, padding=1, bias=False)
+
+        if normalization == 'batch':
+            self.bn2 = nn.BatchNorm2d(output_channels)
+        elif normalization == 'group':
+            self.bn2 = nn.GroupNorm(64,output_channels)
+        else:
+            self.bn2 = nn.Identity()
+        
+        # self.conv2 = nn.Conv2d(out_channels, out_channels, kernel_size=3, stride=stride, padding=1)
+        # self.batch_norm2 = nn.BatchNorm2d(out_channels)
+
+        if weight_standard == True:
+            self.conv3 = Conv2d(output_channels, output_channels*self.expansion, 
+                                    kernel_size=1, stride=1, padding=0, bias=False)
+        else:
+            self.conv3 = nn.Conv2d(output_channels, output_channels*self.expansion, 
+                                   kernel_size=1, stride=1, padding=0, bias=False)
+
+        if normalization == 'batch':
+            self.bn3 = nn.BatchNorm2d(output_channels*self.expansion)
+        elif normalization == 'group':
+            self.bn3 = nn.GroupNorm(64,output_channels*self.expansion)
+        else:
+            self.bn3 = nn.Identity()
+        
+        # self.conv3 = nn.Conv2d(out_channels, out_channels*self.expansion, kernel_size=1, stride=1, padding=0)
+        # self.batch_norm3 = nn.BatchNorm2d(out_channels*self.expansion)
+
+        
+        self.shortcut = nn.Sequential()    
+
+        if first_stride != 1 or input_channels != (output_channels*self.expansion):
+            # Option A: downsample spatially, pad with zeros depth-wise
+            if projection == False:
+                self.shortcut = PaddedIdentity(lambda x: F.pad(x[:, :, ::2, ::2], 
+                                                           (0, 0, 0, 0, self.output_channels//4, 
+                                                            self.output_channels//4)))
+            # Option B: project onto new dimension
+            else:
+                if weight_standard == True:
+                    conv = Conv2d(input_channels, output_channels*self.expansion, 
+                                 kernel_size=1, stride=first_stride, bias=False)
+                else:
+                    conv = nn.Conv2d(input_channels, output_channels*self.expansion, 
+                                 kernel_size=1, stride=first_stride, bias=False)
+                                 
+                if normalization == 'batch':
+                    bn = nn.BatchNorm2d(output_channels*self.expansion)
+                elif normalization == 'group':
+                    bn = nn.GroupNorm(64,output_channels*self.expansion)
+                else:
+                    bn = nn.Identity()
+
+                self.shortcut = nn.Sequential(conv, bn)
+      
+        self.relu = nn.ReLU()
+        
+    def forward(self, x):
+        out = self.relu(self.bn1(self.conv1(x)))
+        out = self.relu(self.bn2(self.conv2(out)))
+        out = self.bn3(self.conv3(out))
+
+        out = out + self.shortcut(x) 
+        out = self.relu(out)
+        
+        return out
+
+
+class BasicBlock(nn.Module):
+    expansion = 1
     def __init__(self, input_channels, output_channels, first_stride, projection=True, normalization = 'batch', weight_standard = False):
 
         super().__init__()
@@ -74,7 +173,8 @@ class BasicBlock(nn.Module):
             self.bn2 = nn.GroupNorm(32,output_channels)
         else:
             self.bn2 = nn.Identity()
-        self.shortcut = nn.Sequential()        
+        self.shortcut = nn.Sequential()    
+
         if self.first_stride != 1 or self.input_channels != self.output_channels:
             # Option A: downsample spatially, pad with zeros depth-wise
             if self.projection == False:
@@ -125,7 +225,7 @@ class BasicBlock(nn.Module):
 
 class ResNet(nn.Module):
 
-    def __init__(self, input_channels, output_channels_list, 
+    def __init__(self, Block, input_channels, output_channels_list, 
                  layer_depths, num_classes, c1_kernel, c1_stride, c1_pad, maxpool=True, normalization = 'batch', weight_standard = False):
 
         super().__init__()
@@ -154,12 +254,13 @@ class ResNet(nn.Module):
         self.relu = nn.ReLU(inplace=True)
         if self.maxpool is True:
             self.mp = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
-        self.res1 = self._make_layer(BasicBlock, layer_depths[0], output_channels_list[0], first_stride=1, normalization = normalization, weight_standard = weight_standard)
-        self.res2 = self._make_layer(BasicBlock, layer_depths[1], output_channels_list[1], first_stride=2, normalization = normalization, weight_standard = weight_standard)
-        self.res3 = self._make_layer(BasicBlock, layer_depths[2], output_channels_list[2], first_stride=2, normalization = normalization, weight_standard = weight_standard)
-        self.res4 = self._make_layer(BasicBlock, layer_depths[3], output_channels_list[3], first_stride=2, normalization = normalization, weight_standard = weight_standard)
+
+        self.res1 = self._make_layer(Block, layer_depths[0], output_channels_list[0], first_stride=1, normalization = normalization, weight_standard = weight_standard)
+        self.res2 = self._make_layer(Block, layer_depths[1], output_channels_list[1], first_stride=2, normalization = normalization, weight_standard = weight_standard)
+        self.res3 = self._make_layer(Block, layer_depths[2], output_channels_list[2], first_stride=2, normalization = normalization, weight_standard = weight_standard)
+        self.res4 = self._make_layer(Block, layer_depths[3], output_channels_list[3], first_stride=2, normalization = normalization, weight_standard = weight_standard)
         self.avgpool = nn.AdaptiveAvgPool2d((1,1))
-        self.fc = nn.Linear(output_channels_list[3], num_classes)
+        self.fc = nn.Linear(output_channels_list[3]*Block.expansion, num_classes)
                 
         self._weights_init()
 
@@ -177,7 +278,7 @@ class ResNet(nn.Module):
         out = self.res3(out)
         out = self.res4(out)     
         out = self.avgpool(out)
-        out = out.view(-1, self.output_channels_list[3])
+        out = out.view(x.shape[0], -1)
         out = self.fc(out)
 
         return out
@@ -187,11 +288,13 @@ class ResNet(nn.Module):
         if layer_depth is None:
             return nn.Sequential()
 
-        strides = [first_stride] + [1] * (layer_depth - 1)
         layers = []
+        layers.append(block_class(self.channels, output_channels, first_stride = first_stride, normalization = normalization, weight_standard = weight_standard))
+        self.channels = output_channels*block_class.expansion
+        
+        strides = [1] * (layer_depth - 1)
         for s in strides:
             layers.append(block_class(self.channels, output_channels, first_stride = s, normalization = normalization, weight_standard = weight_standard))
-            self.channels = output_channels
 
         return nn.Sequential(*layers)
 
@@ -211,10 +314,16 @@ class ResNet(nn.Module):
 
 
 def resnet18():
-    return ResNet(input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=1000, c1_kernel=7, c1_stride=2, c1_pad=3, maxpool=True)
+    return ResNet(BasicBlock, input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=1000, c1_kernel=7, c1_stride=2, c1_pad=3, maxpool=True)
 
 def resnetc18(normalization = 'batch', weight_standard = False):
-    return ResNet(input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=10, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False,normalization = normalization, weight_standard = weight_standard)
+    print("ResNet18")
+    return ResNet(BasicBlock, input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=10, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False,normalization = normalization, weight_standard = weight_standard)
 
 def resnetc20():
-    return ResNet(input_channels=3, output_channels_list=[16, 32, 64, 64], layer_depths=[3,3,3,None], num_classes=10, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False)
+    return ResNet(BasicBlock, input_channels=3, output_channels_list=[16, 32, 64, 64], layer_depths=[3,3,3,None], num_classes=10, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False)
+
+def resnetc50(normalization = 'batch', weight_standard = False):
+    print("ResNet50")
+    return ResNet(Bottleneck, input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[3,4,6,3], num_classes=200, c1_kernel=7, c1_stride=2, c1_pad=3, maxpool=False,normalization = normalization, weight_standard = weight_standard)
+

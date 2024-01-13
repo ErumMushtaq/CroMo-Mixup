@@ -1,7 +1,86 @@
+import os
 import torch
 from torch.utils.data import Dataset
 import torchvision.transforms as T
 import torch.nn as nn
+import gdown
+import numpy as np
+from PIL import Image
+
+
+class TinyImagenet(Dataset):
+    """
+    Defines Tiny Imagenet as for the others pytorch datasets.
+    """
+    def __init__(self, root, train=True, transform=None,
+                target_transform=None, download=False):
+        self.root = root
+        self.train = train
+        self.transform = transform
+        self.target_transform = target_transform
+        self.download = download
+
+        if download:
+            if os.path.isdir(root) and len(os.listdir(root)) > 0:
+                print('Download not needed, files already on disk.')
+            else:
+                base_url =  "https://drive.google.com/uc?export=download&id=1Sy3ScMBr0F4se8VZ6TAwDYF-nNGAAdxj"
+                file_name = "tiny-imagenet-200.zip"
+
+                file_path = os.path.join(root, file_name)
+
+                if not os.path.exists(root):
+                    os.makedirs(root)
+
+                if not os.path.exists(file_path):
+                    print(f"Downloading Tiny ImageNet to {file_path}")
+                    gdown.download(base_url, file_path, quiet=False)
+
+                print(f"Extracting Tiny ImageNet to {root}")
+
+                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                    zip_ref.extractall(root)
+
+                # Remove the downloaded zip file
+                os.remove(file_path)
+
+
+        self.data = []
+        for num in range(20):
+            self.data.append(np.load(os.path.join(
+                root, 'processed/x_%s_%02d.npy' %
+                      ('train' if self.train else 'val', num+1))))
+        self.data = np.concatenate(np.array(self.data))
+
+        self.targets = []
+        for num in range(20):
+            self.targets.append(np.load(os.path.join(
+                root, 'processed/y_%s_%02d.npy' %
+                      ('train' if self.train else 'val', num+1))))
+        self.targets = np.concatenate(np.array(self.targets))
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, index):
+        img, target = self.data[index], self.targets[index]
+
+        # doing this so that it is consistent with all other datasets
+        # to return a PIL Image
+        img = Image.fromarray(np.uint8(255 * img))
+        # original_img = img.copy()
+
+        if self.transform is not None:
+            img = self.transform(img)
+
+        if self.target_transform is not None:
+            target = self.target_transform(target)
+
+        # if hasattr(self, 'logits'):
+        #     return img, target, original_img, self.logits[index]
+
+        return img, target
+
 
 def normalize_to_neg_one_to_one(img):
     return img * 2 - 1

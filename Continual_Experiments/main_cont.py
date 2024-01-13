@@ -18,6 +18,9 @@ from torchvision import transforms as T, utils
 
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
+from dataloaders.dataloader_tinyImagenet2 import get_tinyImagenet
+
+
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, Knn_Validation, linear_evaluation_task_confusion
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
@@ -30,10 +33,11 @@ from models.gaussian_diffusion.openai_utils import gaussian_diffusion as gd
 from diffusers import DDPMScheduler, DDIMScheduler
 from diffusers import UNet2DModel
 
-from trainers.train_basic import train_simsiam, train_barlow, train_infomax
+from trainers.train_basic import train_simsiam, train_barlow, train_infomax, train_simclr
+
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
-from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax
+from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax, train_cassle_simclr
 
 from trainers.train_cassle_noise import train_cassle_noise_barlow
 
@@ -50,7 +54,7 @@ from trainers.train_LRD_cross import  train_LRD_cross_barlow
 from trainers.train_LRD_replay import train_LRD_replay_infomax, train_LRD_replay_barlow
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
-from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow
+from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow, train_ering_simclr
 from trainers.train_dist_ering import train_dist_ering_infomax
 from trainers.train_cassle_ering import train_cassle_barlow_ering
 # from trainers.train_cassle_contrast import train_infomax_iomix, train_cassle_infomax_mixed_distillation, train_cassle_barlow_ering_contrast, train_cassle_barlow_mixed_distillation, train_cassle_barlow_principled_iomix, train_cassle_barlow_iomixup, train_cassle_barlow_inputmixup
@@ -139,6 +143,8 @@ def add_args(parser):
     parser.add_argument('--info_loss', type=str, default='invariance',
                         help='infomax loss')
     parser.add_argument('--R_eps_weight', type=float, default=1e-8)
+    parser.add_argument('--la_mu', type=float, default=0.1)
+    parser.add_argument('--la_R', type=float, default=0.1)
 
 
     #LRD parameters
@@ -149,6 +155,9 @@ def add_args(parser):
     # Barlow Twins Args
     parser.add_argument('--lambda_param', type=float, default=5e-3)
     parser.add_argument('--scale_loss', type=float, default=0.025)
+
+    #simclr args
+    parser.add_argument('--temperature', type=float, default=0.07)
 
     #Ering parameters
     parser.add_argument('--bsize', type=int, default=250, help='For Ering, number of samples that are sampled for each batch')
@@ -218,14 +227,24 @@ if __name__ == "__main__":
 
     if args.dataset == "cifar10":
         get_dataloaders = get_cifar10
+        img_size = 32
         num_classes=10
         mean = (0.4914, 0.4822, 0.4465)
         std = (0.247, 0.243, 0.261)
     elif args.dataset == "cifar100":
         get_dataloaders = get_cifar100
+        img_size = 32
         num_classes=100
         mean = (0.5071, 0.4865, 0.4409)
         std = (0.2673, 0.2564, 0.2762)
+    elif args.dataset == "tinyImagenet":
+        get_dataloaders = get_tinyImagenet
+        img_size = 64
+        num_classes=200
+        # mean = (0.4802, 0.4480, 0.3975)
+        # std = (0.2770, 0.2691, 0.2821)
+        mean = (0.485, 0.456, 0.406)  #from infomax
+        std = (0.229, 0.224, 0.225)
     assert sum(args.class_split) == num_classes
     assert len(args.class_split) == len(args.epochs)
     
@@ -247,25 +266,22 @@ if __name__ == "__main__":
     if 'simsiam' in args.appr:
         #augmentations
         transform = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomResizedCrop(size=img_size, scale=(0.2, 1.0)),
                 T.RandomHorizontalFlip(),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
                 T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomResizedCrop(size=img_size, scale=(0.2, 1.0)),
                 T.RandomHorizontalFlip(),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
                 T.Normalize(mean=mean, std=std)])
-
-
-    
     if 'infomax' in args.appr:
         min_scale = 0.08
         transform = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomResizedCrop(size=img_size, scale=(min_scale, 1.0),),
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
@@ -274,7 +290,7 @@ if __name__ == "__main__":
                 T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomResizedCrop(size=img_size, scale=(min_scale, 1.0),),
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
@@ -284,7 +300,7 @@ if __name__ == "__main__":
     if 'barlow' in args.appr: #ref: they do not have Gaussian Blur https://github.com/vturrisi/solo-learn/blob/main/scripts/pretrain/cifar/augmentations/asymmetric.yaml
         min_scale = 0.08
         transform = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomResizedCrop(size=img_size, scale=(min_scale, 1.0),),
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
@@ -293,7 +309,7 @@ if __name__ == "__main__":
                 T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
-                T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),),
+                T.RandomResizedCrop(size=img_size, scale=(min_scale, 1.0),),
                 T.RandomHorizontalFlip(0.5),
                 T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.2, hue=0.1)]), p=0.8),
                 T.RandomGrayscale(p=0.2),
@@ -312,11 +328,30 @@ if __name__ == "__main__":
                 [T.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
                 T.RandomHorizontalFlip(),
                 T.Normalize(*cifar_norm)])
+        # if args.transform == 'basic':
+        transform2 = T.Compose([T.RandomResizedCrop(size=img_size, scale=(min_scale, 1.0),), T.RandomHorizontalFlip(0.5), T.Normalize(mean=mean, std=std)])
+        transform2_prime = T.Compose([T.RandomResizedCrop(size=img_size, scale=(min_scale, 1.0),), T.RandomHorizontalFlip(0.5),T.Normalize(mean=mean, std=std)])
+
+    if 'simclr' in args.appr:
+        #augmentations
+        transform = T.Compose([
+                T.RandomResizedCrop(size=img_size, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                #T.RandomApply([GaussianBlur()], p=1.0),#it is definitely applied: https://github.com/sthalles/SimCLR/blob/master/data_aug/contrastive_learning_dataset.py
+                T.Normalize(mean=mean, std=std)])
+
+        transform_prime = T.Compose([
+                T.RandomResizedCrop(size=img_size, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                #T.RandomApply([GaussianBlur()], p=1.0),#it is definitely applied
+                T.Normalize(mean=mean, std=std)])
 
         
-        # if args.transform == 'basic':
-        transform2 = T.Compose([T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),), T.RandomHorizontalFlip(0.5), T.Normalize(mean=mean, std=std)])
-        transform2_prime = T.Compose([T.RandomResizedCrop(size=32, scale=(min_scale, 1.0),), T.RandomHorizontalFlip(0.5),T.Normalize(mean=mean, std=std)])
+        
 
     #Dataloaders
     print("Creating Dataloaders..")
@@ -329,7 +364,7 @@ if __name__ == "__main__":
 
     # #Class Based
     #train_data_loaders, train_data_loaders_knn, test_data_loaders, validation_data_loaders, train_data_loaders_linear, train_data_loaders_pure
-    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
+    train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, org_data = org_data)
 
     #Create Model
@@ -340,14 +375,14 @@ if __name__ == "__main__":
         proj_out = args.proj_out
         pred_hidden = args.pred_hidden
         pred_out = args.pred_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr, dataset=args.dataset)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
         model.to(device) #automatically detects from model
-    if 'infomax' in args.appr or 'barlow' in args.appr:
+    if 'infomax' in args.appr or 'barlow' in args.appr or 'simclr' in args.appr:
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
-        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
+        encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr, dataset=args.dataset)
         model = Siamese(encoder)
         model.to(device) #automatically detects from model
     if 'diffusion' in args.appr:
@@ -427,6 +462,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_barlow': #baseline setup
         model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
+    elif args.appr == 'basic_simclr': #baseline setup
+        model, loss, optimizer = train_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'PFR_simsiam': #CVPR paper
         model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
@@ -437,6 +474,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_PFR_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'cassle_barlow': #CVPR main paper
         model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_simclr': #CVPR main paper
+        model, loss, optimizer = train_cassle_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_cosine_barlow': #CVPR main paper
         model, loss, optimizer = train_cassle_cosine_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, transform, transform_prime,  device, args)
     elif args.appr == 'cassle_cosine_linear_barlow': #CVPR main paper
@@ -477,6 +516,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_ering_simsiam(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
     elif args.appr == 'ering_barlow': #ERING
         model, loss, optimizer = train_ering_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
+    elif args.appr == 'ering_simclr': #ERING
+        model, loss, optimizer = train_ering_simclr(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'LRD_replay_infomax': #LRD + Replay + infomax
         model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
     elif args.appr == 'LRD_replay_barlow': #LRD + Replay + barlow
@@ -527,6 +568,10 @@ if __name__ == "__main__":
         # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     elif args.dataset == 'cifar100':
         classifier = LinearClassifier(num_classes = 100).to(device)
+        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+    elif args.dataset == 'tinyImagenet':
+        classifier = LinearClassifier(features_dim=2048, num_classes = 200).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
 

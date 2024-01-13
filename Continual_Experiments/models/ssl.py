@@ -7,7 +7,7 @@
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-from models.resnet import resnetc18
+from models.resnet import resnetc18, resnetc50
 
 def loss_fn(x, y):
     x = F.normalize(x, dim=-1, p=2)
@@ -17,9 +17,12 @@ def loss_fn(x, y):
 
 class Encoder(nn.Module):
 
-    def __init__(self, hidden_dim=None, output_dim=2048, normalization = 'batch', weight_standard = False, appr_name = 'simsiam'):
+    def __init__(self, hidden_dim=None, output_dim=2048, normalization = 'batch', weight_standard = False, appr_name = 'simsiam', dataset="cifar10"):
         super().__init__()
-        resnet = resnetc18(normalization = normalization, weight_standard = weight_standard)
+        if "cifar" in dataset:
+            resnet = resnetc18(normalization = normalization, weight_standard = weight_standard)
+        else:
+            resnet = resnetc50(normalization = normalization, weight_standard = weight_standard)
         input_dim = resnet.fc.in_features
         if hidden_dim is None:
             hidden_dim = output_dim
@@ -51,7 +54,17 @@ class Encoder(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Linear(hidden_dim, hidden_dim),
                 nn.ReLU(inplace=True),
-                nn.Linear(hidden_dim, output_dim),)
+                nn.Linear(hidden_dim, output_dim,bias=False),)
+
+        if 'simclr' in appr_name:
+            self.projector = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, output_dim,bias=False),)
+            #self.projector = nn.Sequential(
+            #    nn.Linear(input_dim, hidden_dim),
+            #    nn.ReLU(inplace=True),
+            #    nn.Linear(hidden_dim, output_dim))
 
     def forward(self, x):
         out = self.backbone(x).squeeze()
