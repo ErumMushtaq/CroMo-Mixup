@@ -18,7 +18,7 @@ from torchvision import transforms as T, utils
 
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
-from dataloaders.dataloader_tinyImagenet2 import get_tinyImagenet
+# from dataloaders.dataloader_tinyImagenet2 import get_tinyImagenet
 
 
 from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, Knn_Validation, linear_evaluation_task_confusion
@@ -56,7 +56,7 @@ from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow, train_ering_simclr
 from trainers.train_dist_ering import train_dist_ering_infomax
-from trainers.train_cassle_ering import train_cassle_barlow_ering
+from trainers.train_cassle_ering import train_cassle_barlow_ering, train_cassle_ering_simclr, train_cassle_ering_infomax
 # from trainers.train_cassle_contrast import train_infomax_iomix, train_cassle_infomax_mixed_distillation, train_cassle_barlow_ering_contrast, train_cassle_barlow_mixed_distillation, train_cassle_barlow_principled_iomix, train_cassle_barlow_iomixup, train_cassle_barlow_inputmixup
 from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 from trainers.train_cassle_cosine import train_cassle_cosine_barlow
@@ -66,8 +66,8 @@ from trainers.train_GPM import train_gpm_barlow
 from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
-from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup
-from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation
+from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix
+from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation
 from trainers.train_cassle_contrast import  train_cassle_barlow_ering_contrast,  train_cassle_barlow_principled_iomix, train_cassle_barlow_inputmixup
 
 
@@ -544,6 +544,14 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow_iomixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'infomax_iomix':
         model, loss, optimizer = train_infomax_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'simclr_iomix':
+        model, loss, optimizer = train_simclr_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'simclr_mixed_distillation':
+        model, loss, optimizer =  train_simclr_mixed_distillation(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'simclr_cassle_ering':
+        model, loss, optimizer =   train_cassle_ering_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'infomax_cassle_ering':
+        model, loss, optimizer =  train_cassle_ering_infomax(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'infomax_mixed_distillation':
         model, loss, optimizer = train_cassle_infomax_mixed_distillation(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'barlow_principled_iomix':
@@ -582,7 +590,11 @@ if __name__ == "__main__":
     #T-SNE Plot
     # print("Starting T-SNE Plot..")
     # get_t_SNE_plot(test_data_loaders_all[0], model, classifier, device)
-
+    if len(args.class_split) == 1: # Offline, just hard core the cases you need values for
+        if args.dataset == 'cifar10':
+            args.class_split = [5,5]
+        elif args.dataset == 'cifar100':
+            args.class_split = [20,20,20,20,20]
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
     file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 
     # save your encoder network
