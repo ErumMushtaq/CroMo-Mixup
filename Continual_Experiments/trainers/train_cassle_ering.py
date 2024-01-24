@@ -403,7 +403,7 @@ def train_cassle_ering_infomax(model, train_data_loaders, knn_train_data_loaders
                     if curr_task_size < args.replay_bs:
                         old_task_size = curr_task_size
                     else:
-                        old_task_size = args.replay_batchsize
+                        old_task_size = args.replay_bs
 
                     x1_hat = torch.cat((x1, x1_old))
                     x2_hat = torch.cat((x2, x2_old))        
@@ -412,8 +412,8 @@ def train_cassle_ering_infomax(model, train_data_loaders, knn_train_data_loaders
                     z2 = F.normalize(z2, p=2)
 
 
-                    f1Old = oldModel(x1).squeeze().detach()
-                    f2Old = oldModel(x2).squeeze().detach()
+                    f1Old = oldModel(x1_hat).squeeze().detach()
+                    f2Old = oldModel(x2_hat).squeeze().detach()
                     f1Old = F.normalize(f1Old, p=2)
                     f2Old = F.normalize(f2Old, p=2)
 
@@ -437,7 +437,7 @@ def train_cassle_ering_infomax(model, train_data_loaders, knn_train_data_loaders
                     #                         + cross_loss(p2_2, f2Old[:curr_task_size]).mean() * 0.5) )
                     loss += lossKD 
                     epoch_loss.append(org_loss.item())
-                    distil_loss.append(ood_loss.item())
+                    distil_loss.append(lossKD.item())
                     optimizer.zero_grad()
                     loss.backward()
                     optimizer.step() 

@@ -86,7 +86,11 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
             if org_data == False:
                 train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
             else:
-                train_dataset = Org_SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+                #lump values
+                # cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
+                # basic_transform = transforms.Normalize(*cifar_norm)
+                basic_transform = None #UCL/augmentations/simsiam
+                train_dataset = Org_SimSiam_Dataset(xtrain, ytrain, transform, transform_prime, basic_transform)
             train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True)) #, timeout=500
             train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_knn), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
             train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))

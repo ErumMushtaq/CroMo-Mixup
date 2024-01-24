@@ -66,6 +66,7 @@ from trainers.train_GPM import train_gpm_barlow
 from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
+from trainers.train_lump import train_lump_barlow
 from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix
 from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation
 from trainers.train_cassle_contrast import  train_cassle_barlow_ering_contrast,  train_cassle_barlow_principled_iomix, train_cassle_barlow_inputmixup
@@ -357,7 +358,7 @@ if __name__ == "__main__":
     print("Creating Dataloaders..")
 
     batch_size = args.pretrain_batch_size
-    if 'aug' in args.appr or 'mix' in args.appr:
+    if 'aug' in args.appr or 'mix' in args.appr or 'lump' in args.appr:
         org_data = True
     else:
         org_data = False
@@ -542,6 +543,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow_inputmixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'barlow_iomix':
         model, loss, optimizer = train_cassle_barlow_iomixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'barlow_lump':
+        model, loss, optimizer = train_lump_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     elif args.appr == 'infomax_iomix':
         model, loss, optimizer = train_infomax_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_iomix':
@@ -567,7 +570,7 @@ if __name__ == "__main__":
     _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
                                         classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
     print("Starting Classifier Training..")
-    lin_epoch = 200
+    lin_epoch = 1
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
@@ -595,7 +598,13 @@ if __name__ == "__main__":
             args.class_split = [5,5]
         elif args.dataset == 'cifar100':
             args.class_split = [20,20,20,20,20]
+        train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, train_data_loaders_pure, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
+                                        classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, org_data = org_data)
+
+
+
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
+
     file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 
     # save your encoder network
     save_checkpoint({
