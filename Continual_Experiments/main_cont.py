@@ -570,7 +570,7 @@ if __name__ == "__main__":
     _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
                                         classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
     print("Starting Classifier Training..")
-    lin_epoch = 1
+    lin_epoch = 200
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
         lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler

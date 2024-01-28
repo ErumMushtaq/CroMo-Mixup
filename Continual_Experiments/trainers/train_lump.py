@@ -210,8 +210,15 @@ def process_batch_ering(x1, x2, x1_old, x2_old, model, cross_loss, oldModel, opt
 
 def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime):
     buffer = Buffer(buffer_size=args.pretrain_batch_size, device=device, n_tasks=len(args.class_split), mode='reservoir')
-    if args.dataset == 'cifar100' or args.dataset == 'cifar10':
+    if args.dataset == 'cifar10':
         cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
+        eval_transform = transforms.Compose([
+                transforms.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
+                transforms.RandomHorizontalFlip(),
+                transforms.Normalize(*cifar_norm)
+                ])
+    elif args.dataset == 'cifar100':
+        cifar_norm = [[0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]] #just to make it consistent with the normalization we apply for BT, in lump they used cofar10 norm values.
         eval_transform = transforms.Compose([
                 transforms.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
                 transforms.RandomHorizontalFlip(),
@@ -267,7 +274,7 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
                     else:
                         buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=eval_transform)
                         buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
-                        lam = np.random.beta(args.alpha, args.alpha) #0.4
+                        lam = np.random.beta(0.4, 0.4) #0.4
                         mixed_x = lam * x1 + (1 - lam) * buf_inputs[:x1.shape[0]]
                         mixed_x_aug = lam * x2+ (1 - lam) * buf_inputs1[:x1.shape[0]]
                         model, optimizer = process_batch(mixed_x, mixed_x_aug , model, cross_loss, optimizer, epoch_loss, args)
