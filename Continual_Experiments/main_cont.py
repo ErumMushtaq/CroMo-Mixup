@@ -33,7 +33,7 @@ from models.gaussian_diffusion.openai_utils import gaussian_diffusion as gd
 from diffusers import DDPMScheduler, DDIMScheduler
 from diffusers import UNet2DModel
 
-from trainers.train_basic import train_simsiam, train_barlow, train_infomax, train_simclr
+from trainers.train_basic import train_simsiam, train_barlow, train_infomax, train_simclr, train_byol
 
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
@@ -94,6 +94,15 @@ class GaussianBlur(object):
         x = torchvision.transforms.functional.gaussian_blur(x,kernel_size=[3,3],sigma=sigma)#kernel size and sigma are open problems but right now seems ok!
         return x
 
+class RandomApply(nn.Module):
+    def __init__(self, fn, p):
+        super().__init__()
+        self.fn = fn
+        self.p = p
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        return self.fn(x)
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -318,6 +327,8 @@ if __name__ == "__main__":
                 T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
 
+    
+
         if 'inputmix' in args.appr: #https://github.com/divyam3897/UCL/blob/cfaa81d1af867afa9f35ff5d27d05404e212811b/datasets/seq_cifar100.py#L47
             cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
             print('LUMP transform')
@@ -351,7 +362,25 @@ if __name__ == "__main__":
                 #T.RandomApply([GaussianBlur()], p=1.0),#it is definitely applied
                 T.Normalize(mean=mean, std=std)])
 
-        
+    #https://github.com/The-AI-Summer/byol-cifar10/blob/main/AI_Summer_BYOL_in_CIFAR10.ipynb
+    if 'byol' in args.appr: # SImCLR augmentation (ref: https://github.com/lucidrains/byol-pytorch/blob/master/byol_pytorch/byol_pytorch.py)
+        transform = T.Compose([
+            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(p=0.5),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+            T.RandomResizedCrop((32, 32)),
+            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+
+        transform_prime = T.Compose([
+            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(p=0.5),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+            T.RandomResizedCrop((32, 32)),
+            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+
+     
         
 
     #Dataloaders
@@ -370,7 +399,7 @@ if __name__ == "__main__":
 
     #Create Model
     ##!!! Make these model arguments
-    if 'simsiam' in args.appr:
+    if 'simsiam' in args.appr or 'byol' in args.appr:
         print("Creating Model for Simsiam..")
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
@@ -379,6 +408,8 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr, dataset=args.dataset)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
+        # if 'byol' in args.appr:
+        #     model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr or 'simclr' in args.appr:
         proj_hidden = args.proj_hidden
@@ -465,6 +496,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_simclr': #baseline setup
         model, loss, optimizer = train_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
+    elif args.appr == 'basic_byol':
+        model, loss, optimizer = train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
     elif args.appr == 'PFR_simsiam': #CVPR paper
         model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
