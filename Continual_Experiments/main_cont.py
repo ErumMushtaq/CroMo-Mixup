@@ -37,7 +37,7 @@ from trainers.train_basic import train_simsiam, train_barlow, train_infomax, tra
 
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
-from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax, train_cassle_simclr
+from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax, train_cassle_simclr, train_cassle_byol
 
 from trainers.train_cassle_noise import train_cassle_noise_barlow
 
@@ -56,7 +56,7 @@ from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow, train_ering_simclr
 from trainers.train_dist_ering import train_dist_ering_infomax
-from trainers.train_cassle_ering import train_cassle_barlow_ering, train_cassle_ering_simclr, train_cassle_ering_infomax
+from trainers.train_cassle_ering import train_cassle_barlow_ering, train_cassle_ering_simclr, train_cassle_ering_infomax,  train_cassle_ering_byol
 # from trainers.train_cassle_contrast import train_infomax_iomix, train_cassle_infomax_mixed_distillation, train_cassle_barlow_ering_contrast, train_cassle_barlow_mixed_distillation, train_cassle_barlow_principled_iomix, train_cassle_barlow_iomixup, train_cassle_barlow_inputmixup
 from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 from trainers.train_cassle_cosine import train_cassle_cosine_barlow
@@ -67,8 +67,8 @@ from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
 from trainers.train_lump import train_lump_barlow
-from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix
-from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation
+from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix, train_iomix_byol
+from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation, train_mixed_distillation_byol
 from trainers.train_cassle_contrast import  train_cassle_barlow_ering_contrast,  train_cassle_barlow_principled_iomix, train_cassle_barlow_inputmixup
 
 
@@ -510,6 +510,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_simclr': #CVPR main paper
         model, loss, optimizer = train_cassle_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_byol':
+        model, loss, optimizer = train_cassle_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_cosine_barlow': #CVPR main paper
         model, loss, optimizer = train_cassle_cosine_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, transform, transform_prime,  device, args)
     elif args.appr == 'cassle_cosine_linear_barlow': #CVPR main paper
@@ -568,6 +570,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
     elif args.appr == 'cosine_ering_barlow': #cosine + ering + barlow
         model, loss, optimizer = train_cosine_ering_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
+    elif args.appr == 'byol_cassle_ering':
+        model, loss, optimizer =  train_cassle_ering_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     elif args.appr == 'gpm_barlow': #gpm+barlow
         model, loss, optimizer = train_gpm_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args) 
     elif args.appr == 'barlow_ering_contrast' or args.appr == 'barlow_cassle_ering' or args.appr == 'barlow_ering_negcontrast' or args.appr == 'barlow_ering_augcontrast' or args.appr == 'barlow_ering_inputmixcontrast':
@@ -582,8 +586,12 @@ if __name__ == "__main__":
         model, loss, optimizer = train_infomax_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_iomix':
         model, loss, optimizer = train_simclr_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'byol_iomix':
+        model, loss, optimizer = train_iomix_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_mixed_distillation':
         model, loss, optimizer =  train_simclr_mixed_distillation(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'byol_mixed_distillation':
+        model, loss, optimizer =  train_mixed_distillation_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_cassle_ering':
         model, loss, optimizer =   train_cassle_ering_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'infomax_cassle_ering':

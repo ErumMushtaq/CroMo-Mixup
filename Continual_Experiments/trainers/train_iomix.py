@@ -664,3 +664,189 @@ def train_simclr_iomix(model, train_data_loaders, knn_train_data_loaders, test_d
         x_old = torch.cat((x_old, x_samp), dim=0)
         y_old = torch.cat((y_old, y_samp), dim=0)
     return model, loss_, optimizer
+
+def collect_params(model, exclude_bias_and_bn=True):
+    param_list = []
+    for name, param in model.named_parameters():
+        if exclude_bias_and_bn and any(
+            s in name for s in ['bn', 'downsample.1', 'bias']):
+            param_dict = {
+                'params': param,
+                'weight_decay': 0.,
+                'lars_exclude': True}
+            # NOTE: with the current pytorch lightning bolts
+            # implementation it is not possible to exclude 
+            # parameters from the LARS adaptation
+        else:
+            param_dict = {'params': param}
+        param_list.append(param_dict)
+    return param_list
+
+def loss_func(x, y):
+   # L2 normalization
+   x = F.normalize(x, dim=-1, p=2)
+   y = F.normalize(y, dim=-1, p=2)
+   return 2 - 2 * (x * y).sum(dim=-1)
+
+   
+def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime):
+    epoch_counter = 0
+    init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
+    model_parameters = collect_params(model)
+    if args.temp_proj == 'nonlinear':
+        model.temporal_projector = nn.Sequential(
+                nn.Linear(args.proj_out, args.proj_hidden, bias=False),
+                nn.BatchNorm1d(args.proj_hidden),
+                nn.ReLU(),
+                nn.Linear(args.proj_hidden, args.proj_out),
+            ).to(device)
+    elif args.temp_proj == 'identity':
+        print("Identity ")
+        model.temporal_projector = nn.Identity().to(device)
+
+    old_model = None
+    x_old = torch.Tensor([]).to(device)
+    features_old = torch.Tensor([]).to(device)
+    y_old = torch.tensor([],dtype=torch.long).to(device)
+
+    for task_id, loader in enumerate(train_data_loaders):
+        # Optimizer and Scheduler
+        model.task_id = task_id
+        init_lr = args.pretrain_base_lr
+        if task_id != 0 and args.same_lr != True:
+            init_lr = init_lr / 10
+
+        optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
+        scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
+        model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
+        loss_ = []
+        step_number = 0
+        
+        for epoch in range(args.epochs[task_id]):
+            start = time.time()
+            model.train()
+            epoch_loss = []
+            if task_id == 0:
+                for x, x1, x2, y in loader:
+                    x, x1, x2 = x.to(device), x1.to(device), x2.to(device)
+                    z1, z2, p1, p2 = model(x1, x2)
+
+                    with torch.no_grad():
+                        target_z1 = model.teacher_model(x1)
+                        target_z2 = model.teacher_model(x2)
+
+                    loss_one = loss_func(p1, target_z2.detach())
+                    loss_two = loss_func(p2, target_z1.detach())
+                    loss = 0.5*loss_one + 0.5*loss_two
+                    loss = loss.mean()
+                    epoch_loss.append(loss.item())
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    step_number += 1 
+                    model.update_moving_average(step_number)
+            else:
+                for cur_data in loader:
+                    x, x1, x2, _ = cur_data
+                    x, x1, x2 = x.to(device), x1.to(device), x2.to(device)
+                    x1_old = torch.Tensor([]).to(device)
+                    x2_old = torch.Tensor([]).to(device)
+                    f2_old = torch.Tensor([]).to(device)
+                    replay_batchsize = args.replay_bs
+                    indices = np.random.randint(0,x_old.shape[0], replay_batchsize)
+                    x_old_bs = x_old[indices]
+                    # print(x_old.shape)
+                    for ind in indices:
+                        x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
+                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+                    curr_task_size = x2.shape[0]
+                    if curr_task_size < args.replay_bs:
+                        old_task_size = curr_task_size
+                    else:
+                        old_task_size = args.replay_bs
+                    lam = np.random.beta(args.alpha, args.alpha)
+                    mix_x1 = lam * x1[:old_task_size] + (1 - lam) * x1_old[:old_task_size]
+                    mix_x2 = lam * x2[:old_task_size] + (1 - lam) * x2_old[:old_task_size]
+
+                    x1_hat = torch.cat((x1, mix_x1))
+                    x2_hat = torch.cat((x2, mix_x2))
+
+                    z1, z2, p1, p2 = model(x1_hat, x2_hat)
+                    z1old, z2old, p1old, p2old = model(x1_old, x2_old)
+
+                    with torch.no_grad():
+                        target_z1 = model.teacher_model(x1[:curr_task_size])
+                        target_z2 = model.teacher_model(x2[:curr_task_size])
+
+                    loss_one = loss_func(p1[:curr_task_size], target_z2.detach())
+                    loss_two = loss_func(p2[:curr_task_size], target_z1.detach())
+                    loss = 0.5*loss_one + 0.5*loss_two
+                    loss = loss.mean()
+                   
+                    #Question: how to handle teacher prediction for the mixup
+                    ood_loss = 0.5*(lam* loss_func(z1[curr_task_size:], z1[:old_task_size]) + (1-lam)* loss_func(z1[curr_task_size:], p1old))+\
+                    0.5*(lam* loss_func(z2[curr_task_size:], z2[:old_task_size]) + (1-lam)* loss_func(z2[curr_task_size:], p2old))
+
+                    loss += ood_loss.mean() 
+
+                    epoch_loss.append(loss.item())
+                    optimizer.zero_grad()
+                    loss.backward()
+                    optimizer.step()
+                    step_number += 1 
+                    model.update_moving_average(step_number)
+                # ema_model = ema.update_model_average(ema_model, model)
+
+            if args.is_debug:
+                break
+
+            scheduler.step()
+            epoch_counter += 1
+            loss_.append(np.mean(epoch_loss))
+            end = time.time()
+            print('epoch end')
+            if (epoch+1) % args.knn_report_freq == 0:
+                knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
+                wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
+                for i, acc in enumerate(task_acc_arr):
+                    wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
+                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
+                print(task_acc_arr)
+            else:
+                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
+        
+            wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
+            wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
+            
+        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+
+        # save your encoder network
+        torch.save({
+                        'state_dict': model.state_dict(),
+                        'optimizer' : optimizer.state_dict(),
+                        'encoder': model.encoder.backbone.state_dict(),
+                    }, file_name)
+
+        oldModel = deepcopy(model.encoder)  # save t-1 model
+        oldModel.to(device)
+        oldModel.train()
+        for param in oldModel.parameters(): #Freeze old model
+            param.requires_grad = False
+
+        x_samp, y_samp = store_samples(loader, task_id, args.msize)
+        x_samp, y_samp = x_samp.to(device), y_samp.to(device)
+        x_old = torch.cat((x_old, x_samp), dim=0)
+        y_old = torch.cat((y_old, y_samp), dim=0)
+        
+        if task_id < len(train_data_loaders)-1:
+            lin_epoch = 1
+            num_class = np.sum(args.class_split[:task_id+1])
+            classifier = LinearClassifier(num_classes = num_class).to(device)
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+            linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
+
+
+    return model, loss_, optimizer
