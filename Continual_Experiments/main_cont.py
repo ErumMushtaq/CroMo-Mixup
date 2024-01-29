@@ -177,7 +177,7 @@ def add_args(parser):
     #Cassle+ering parameters
     parser.add_argument('--cur_dist', type=int, default=1)
     parser.add_argument('--old_dist', type=int, default=1)
-    parser.add_argument('--start_chkpt', type=int, default=1)
+    parser.add_argument('--start_chkpt', type=int, default=0)
 
     parser.add_argument('--cross_lambda', type=float, default=1.0)
 
