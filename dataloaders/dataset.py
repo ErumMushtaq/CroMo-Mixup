@@ -154,13 +154,14 @@ class SimSiam_Dataset(Dataset):
     #     return self.train_data
 
 class Org_SimSiam_Dataset(Dataset):
-    def __init__(self, xtrain, ytrain, transform, transform_prime):
+    def __init__(self, xtrain, ytrain, transform, transform_prime, basic_transform=None):
 
         self.train_data = xtrain
         self.label_data = ytrain
 
         self.transform = transform
         self.transform_prime = transform_prime
+        self.basic_transform = basic_transform
 
     def __len__(self):
         return len(self.train_data)
@@ -169,7 +170,7 @@ class Org_SimSiam_Dataset(Dataset):
         y = self.label_data[idx]
         x1 = self.transform(self.train_data[idx]) if self.transform is not None else self.train_data[idx]
         x2 = self.transform_prime(self.train_data[idx]) if self.transform_prime is not None else self.train_data[idx]
-
+        x = self.basic_transform(self.train_data[idx]) if self.basic_transform is not None else self.train_data[idx] #Should be normalization for LUMP
         # x1 = normalize_to_neg_one_to_one(x1)
         return self.train_data[idx], x1, x2, y
 

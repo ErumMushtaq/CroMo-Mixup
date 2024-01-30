@@ -11,9 +11,10 @@ from loss import invariance_loss,CovarianceLoss,ErrorCovarianceLoss, BarlowTwins
 from utils.lars import LARS
 
 
-def update_memory(memory, dataloader, size):
+def update_memory(memory, dataloader, size, device = 'cpu'):
     indices = np.random.choice(len(dataloader.dataset), size=size, replace=False)
     x, _ =  dataloader.dataset[indices]
+    x = x.to(device)
     memory = torch.cat((memory, x), dim=0)
     return memory
 
@@ -23,7 +24,7 @@ def loss_fn(x, y):
     return  - (x * y).sum(dim=-1).mean()
 
 def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
-    memory = torch.Tensor()
+    memory = torch.Tensor().to(device)
 
     epoch_counter = 0
     for task_id, loader in enumerate(train_data_loaders):
@@ -59,8 +60,8 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, train
                     # x = memory[indices].to(device)
                     # x1, x2 = transform(x), transform_prime(x)
 
-                    x1_old = torch.Tensor([])
-                    x2_old = torch.Tensor([])
+                    x1_old = torch.Tensor([]).to(device)
+                    x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
                     for ind in indices:
                         x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
@@ -103,13 +104,13 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, train
             wandb.log({" Average Mem Loss ": np.mean(epoch_loss_mem), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize,device = device)
 
     return model, loss_, optimizer
 
 
 def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
-    memory = torch.Tensor()
+    memory = torch.Tensor().to(device)
     epoch_counter = 0
     for task_id, loader in enumerate(train_data_loaders):
         past_data_loader = train_data_loaders[0]
@@ -149,8 +150,8 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
                     # x = memory[indices].to(device)
                     # xx1, xx2 = transform(x), transform_prime(x)
 
-                    x1_old = torch.Tensor([])
-                    x2_old = torch.Tensor([])
+                    x1_old = torch.Tensor([]).to(device)
+                    x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
                     for ind in indices:
                         x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
@@ -199,7 +200,7 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
             wandb.log({" Average Mem Loss ": np.mean(epoch_loss_mem), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize,device = device)
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
@@ -214,7 +215,7 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
 
 def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
     epoch_counter = 0
-    memory = torch.Tensor()
+    memory = torch.Tensor().to(device)
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
         
@@ -242,8 +243,8 @@ def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_
                     # x = memory[indices].to(device)
                     # xx1, xx2 = transform(x), transform_prime(x)
 
-                    x1_old = torch.Tensor([])
-                    x2_old = torch.Tensor([])
+                    x1_old = torch.Tensor([]).to(device)
+                    x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
                     for ind in indices:
                         x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
@@ -275,7 +276,7 @@ def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize,device = device)
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
@@ -320,7 +321,7 @@ def info_nce_loss(features,args,device):
 
 def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
     epoch_counter = 0
-    memory = torch.Tensor()
+    memory = torch.Tensor().to(device)
     criterion = torch.nn.CrossEntropyLoss().to(device)
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
@@ -347,8 +348,8 @@ def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_
                     # x = memory[indices].to(device)
                     # xx1, xx2 = transform(x), transform_prime(x)
 
-                    x1_old = torch.Tensor([])
-                    x2_old = torch.Tensor([])
+                    x1_old = torch.Tensor([]).to(device)
+                    x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
                     for ind in indices:
                         x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
@@ -383,7 +384,7 @@ def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize, device)
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network

@@ -5,16 +5,16 @@ import torch
 import torchvision.transforms as T
 from torchvision import datasets,transforms
 from sklearn.utils import shuffle
-from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, Org_SimSiam_Dataset
+from dataloaders.dataset import SimSiam_Dataset, TensorDataset, GenericDataset, TinyImagenet
 
 
-def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8, valid_transform = None, dl_type = 'class_incremental', org_data = False):
+def get_tinyImagenet(transform, transform_prime, classes=[50,50,50,50], valid_rate = 0.05, seed = 0, batch_size = 128, num_worker = 8, valid_transform = None, dl_type = 'class_incremental', org_data = False):
 
     ind = np.cumsum(classes)[:-1]
     tasks = np.split(np.arange(sum(classes)), ind, axis=0)
 
-    trainset=datasets.CIFAR100('./data/cifar100/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
-    testset =datasets.CIFAR100('./data/cifar100/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+    trainset=TinyImagenet('./data/tinyIMG/',train=True,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
+    testset =TinyImagenet('./data/tinyIMG/',train=False,download=True,transform=transforms.Compose([transforms.ToTensor()]))#normalization removed
 
     Ytrain = trainset.targets
     Xtrain = trainset.data
@@ -58,13 +58,16 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
             xtrain = xtrain[itrain].clone()
             ytrain = ytrain[itrain].clone()
 
-            data_normalize_mean = (0.5071, 0.4865, 0.4409)
-            data_normalize_std = (0.2673, 0.2564, 0.2762)
+            # data_normalize_mean = (0.4802, 0.4480, 0.3975)
+            # data_normalize_std = (0.2770, 0.2691, 0.2821)
+
+            data_normalize_mean = (0.485, 0.456, 0.406)  #from infomax
+            data_normalize_std = (0.229, 0.224, 0.225)
             transform_knn = transforms.Compose( [   
                     transforms.Normalize(data_normalize_mean, data_normalize_std),
                 ])
 
-            random_crop_size = 32
+            random_crop_size = 64
             if valid_transform is None:
                 transform_test = transforms.Compose([
                         transforms.Resize(int(random_crop_size*(8/7)), interpolation=transforms.InterpolationMode.BICUBIC, antialias=True), 
@@ -83,15 +86,8 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
                 linear_batch_size = 128
 
             linear_batch_size = 256    
-            if org_data == False:
-                train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
-            else:
-                #lump values
-                # cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
-                # basic_transform = transforms.Normalize(*cifar_norm)
-                basic_transform = None #UCL/augmentations/simsiam
-                train_dataset = Org_SimSiam_Dataset(xtrain, ytrain, transform, transform_prime, basic_transform)
-            train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True)) #, timeout=500
+            train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
+            train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=False)) #, timeout=500
             train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_knn), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
             train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
             test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform_test), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
@@ -122,17 +118,21 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
         for t in range(len(tasks)):
             nvalid = int(valid_rate*train_num)
 
-            xvalid = xtrain_by_class[:, t*(train_num):t*(train_num)+nvalid].clone().reshape(-1, 3, 32, 32)
+            xvalid = xtrain_by_class[:, t*(train_num):t*(train_num)+nvalid].clone().reshape(-1, 3, 64, 64)
             yvalid = ytrain_by_class[:, t*(train_num):t*(train_num)+nvalid].clone().reshape(-1).type(torch.int64)
-            xtrain = xtrain_by_class[:, (t*train_num)+nvalid:(t+1)*train_num].clone().reshape(-1, 3, 32, 32)
+            xtrain = xtrain_by_class[:, (t*train_num)+nvalid:(t+1)*train_num].clone().reshape(-1, 3, 64, 64)
             ytrain = ytrain_by_class[:, (t*train_num)+nvalid:(t+1)*train_num].clone().reshape(-1).type(torch.int64)
-            xtest = xtest_by_class[:, t*test_num:(t+1)*test_num].clone().reshape(-1, 3, 32, 32)
+            xtest = xtest_by_class[:, t*test_num:(t+1)*test_num].clone().reshape(-1, 3, 64, 64)
             ytest = ytest_by_class[:, t*test_num:(t+1)*test_num].clone().reshape(-1)
             print(xtrain.shape)
-            data_normalize_mean = (0.5071, 0.4865, 0.4409)
-            data_normalize_std = (0.2673, 0.2564, 0.2762)
+            # data_normalize_mean = (0.4802, 0.4480, 0.3975)
+            # data_normalize_std = (0.2770, 0.2691, 0.2821)
+
+            data_normalize_mean = (0.485, 0.456, 0.406)  #from infomax
+            data_normalize_std = (0.229, 0.224, 0.225)
+
             transform_knn = transforms.Compose( [transforms.Normalize(data_normalize_mean, data_normalize_std),])
-            random_crop_size = 32
+            random_crop_size = 64
 
             if valid_transform is None:
                 transform_test = transforms.Compose([
@@ -153,7 +153,7 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
 
             linear_batch_size = 256    
             train_dataset = SimSiam_Dataset(xtrain, ytrain, transform, transform_prime)
-            train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=True)) #, timeout=500
+            train_data_loaders.append(DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers = num_worker , pin_memory=False)) #, timeout=500
             train_data_loaders_knn.append(DataLoader(TensorDataset(xtrain, ytrain,transform=transform_knn), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
             train_data_loaders_pure.append(DataLoader(TensorDataset(xtrain, ytrain), batch_size=batch_size, shuffle=True, num_workers = num_worker, pin_memory=True))
             test_data_loaders.append(DataLoader(TensorDataset(xtest,ytest,transform=transform_test), batch_size=batch_size, shuffle=False, num_workers = 8, pin_memory=True))
