@@ -510,4 +510,119 @@ def train_simclr(model, train_data_loaders, knn_train_data_loaders, test_data_lo
 
     return model, loss_, optimizer
 
+def collect_params(model, exclude_bias_and_bn=True):
+    param_list = []
+    for name, param in model.named_parameters():
+        if exclude_bias_and_bn and any(
+            s in name for s in ['bn', 'downsample.1', 'bias']):
+            param_dict = {
+                'params': param,
+                'weight_decay': 0.,
+                'lars_exclude': True}
+            # NOTE: with the current pytorch lightning bolts
+            # implementation it is not possible to exclude 
+            # parameters from the LARS adaptation
+        else:
+            param_dict = {'params': param}
+        param_list.append(param_dict)
+    return param_list
+
+def loss_func(x, y):
+   # L2 normalization
+   x = F.normalize(x, dim=-1, p=2)
+   y = F.normalize(y, dim=-1, p=2)
+   return 2 - 2 * (x * y).sum(dim=-1)
+
+def train_byol(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args):
+    epoch_counter = 0
+    init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
+    model_parameters = collect_params(model)
+
+    for task_id, loader in enumerate(train_data_loaders):
+        # Optimizer and Scheduler
+        model.task_id = task_id
+        init_lr = args.pretrain_base_lr
+        if task_id != 0 and args.same_lr != True:
+            init_lr = init_lr / 10
+
+        optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
+        scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
+        model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
+        loss_ = []
+        step_number = 0
+        
+        for epoch in range(args.epochs[task_id]):
+            start = time.time()
+            model.train()
+            epoch_loss = []
+            for x1, x2, y in loader:
+                # print(y)
+                x1, x2 = x1.to(device), x2.to(device)
+                f1 = model.encoder.backbone(x1).squeeze() # NxC
+                f2 = model.encoder.backbone(x2).squeeze() # NxC
+                z1 = model.encoder.projector(f1) # NxC
+                z2 = model.encoder.projector(f2) # NxC
+
+                p1 = model.predictor(z1) # NxC
+                p2 = model.predictor(z2) # NxC   
+
+                with torch.no_grad():
+                    target_z1 = model.teacher_model(x1)
+                    target_z2 = model.teacher_model(x2)
+
+                loss_one = loss_func(p1, target_z2.detach())
+                loss_two = loss_func(p2, target_z1.detach())
+                loss = 0.5*loss_one + 0.5*loss_two
+                loss = loss.mean()
+
+                epoch_loss.append(loss.item())
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
+                step_number += 1 
+                model.update_moving_average(step_number)
+                # ema_model = ema.update_model_average(ema_model, model)
+
+            if args.is_debug:
+                break
+
+            scheduler.step()
+            epoch_counter += 1
+            loss_.append(np.mean(epoch_loss))
+            end = time.time()
+            print('epoch end')
+            if (epoch+1) % args.knn_report_freq == 0:
+                knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
+                wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
+                for i, acc in enumerate(task_acc_arr):
+                    wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
+                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
+                print(task_acc_arr)
+            else:
+                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
+        
+            wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
+            wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
+            
+        file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+
+        # save your encoder network
+        torch.save({
+                        'state_dict': model.state_dict(),
+                        'optimizer' : optimizer.state_dict(),
+                        'encoder': model.encoder.backbone.state_dict(),
+                    }, file_name)
+        
+        if task_id < len(train_data_loaders)-1:
+            lin_epoch = 100
+            num_class = np.sum(args.class_split[:task_id+1])
+            classifier = LinearClassifier(num_classes = num_class).to(device)
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+            linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
+
+
+
+    return model, loss_, optimizer
+
 

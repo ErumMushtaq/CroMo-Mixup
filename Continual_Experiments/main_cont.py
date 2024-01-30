@@ -33,11 +33,11 @@ from models.gaussian_diffusion.openai_utils import gaussian_diffusion as gd
 from diffusers import DDPMScheduler, DDIMScheduler
 from diffusers import UNet2DModel
 
-from trainers.train_basic import train_simsiam, train_barlow, train_infomax, train_simclr
+from trainers.train_basic import train_simsiam, train_barlow, train_infomax, train_simclr, train_byol
 
 
 from trainers.train_PFR import train_PFR_simsiam,train_PFR_barlow,train_PFR_infomax
-from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax, train_cassle_simclr
+from trainers.train_cassle import train_cassle_simsiam,train_cassle_barlow,train_cassle_infomax, train_cassle_simclr, train_cassle_byol
 
 from trainers.train_cassle_noise import train_cassle_noise_barlow
 
@@ -56,7 +56,7 @@ from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
 from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow, train_ering_simclr
 from trainers.train_dist_ering import train_dist_ering_infomax
-from trainers.train_cassle_ering import train_cassle_barlow_ering, train_cassle_ering_simclr, train_cassle_ering_infomax
+from trainers.train_cassle_ering import train_cassle_barlow_ering, train_cassle_ering_simclr, train_cassle_ering_infomax,  train_cassle_ering_byol
 # from trainers.train_cassle_contrast import train_infomax_iomix, train_cassle_infomax_mixed_distillation, train_cassle_barlow_ering_contrast, train_cassle_barlow_mixed_distillation, train_cassle_barlow_principled_iomix, train_cassle_barlow_iomixup, train_cassle_barlow_inputmixup
 from trainers.train_cassle_inversion import train_cassle_barlow_inversion
 from trainers.train_cassle_cosine import train_cassle_cosine_barlow
@@ -67,8 +67,8 @@ from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
 from trainers.train_lump import train_lump_barlow
-from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix
-from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation
+from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix, train_iomix_byol
+from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation, train_mixed_distillation_byol
 from trainers.train_cassle_contrast import  train_cassle_barlow_ering_contrast,  train_cassle_barlow_principled_iomix, train_cassle_barlow_inputmixup
 
 
@@ -94,6 +94,15 @@ class GaussianBlur(object):
         x = torchvision.transforms.functional.gaussian_blur(x,kernel_size=[3,3],sigma=sigma)#kernel size and sigma are open problems but right now seems ok!
         return x
 
+class RandomApply(nn.Module):
+    def __init__(self, fn, p):
+        super().__init__()
+        self.fn = fn
+        self.p = p
+    def forward(self, x):
+        if random.random() > self.p:
+            return x
+        return self.fn(x)
 
 def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
     torch.save(state, filename)
@@ -318,6 +327,8 @@ if __name__ == "__main__":
                 T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
 
+    
+
         if 'inputmix' in args.appr: #https://github.com/divyam3897/UCL/blob/cfaa81d1af867afa9f35ff5d27d05404e212811b/datasets/seq_cifar100.py#L47
             cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
             print('LUMP transform')
@@ -351,7 +362,25 @@ if __name__ == "__main__":
                 #T.RandomApply([GaussianBlur()], p=1.0),#it is definitely applied
                 T.Normalize(mean=mean, std=std)])
 
-        
+    #https://github.com/The-AI-Summer/byol-cifar10/blob/main/AI_Summer_BYOL_in_CIFAR10.ipynb
+    if 'byol' in args.appr: # SImCLR augmentation (ref: https://github.com/lucidrains/byol-pytorch/blob/master/byol_pytorch/byol_pytorch.py)
+        transform = T.Compose([
+            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(p=0.5),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+            T.RandomResizedCrop((32, 32)),
+            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+
+        transform_prime = T.Compose([
+            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+            T.RandomGrayscale(p=0.2),
+            T.RandomHorizontalFlip(p=0.5),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+            T.RandomResizedCrop((32, 32)),
+            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+
+     
         
 
     #Dataloaders
@@ -370,7 +399,7 @@ if __name__ == "__main__":
 
     #Create Model
     ##!!! Make these model arguments
-    if 'simsiam' in args.appr:
+    if 'simsiam' in args.appr or 'byol' in args.appr:
         print("Creating Model for Simsiam..")
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
@@ -379,6 +408,8 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr, dataset=args.dataset)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
+        # if 'byol' in args.appr:
+        #     model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr or 'simclr' in args.appr:
         proj_hidden = args.proj_hidden
@@ -465,6 +496,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_simclr': #baseline setup
         model, loss, optimizer = train_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
+    elif args.appr == 'basic_byol':
+        model, loss, optimizer = train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
     elif args.appr == 'PFR_simsiam': #CVPR paper
         model, loss, optimizer = train_PFR_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, device, args)
     elif args.appr == 'PFR_infomax': #CVPR paper + NeurIPS Paper
@@ -477,6 +510,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_simclr': #CVPR main paper
         model, loss, optimizer = train_cassle_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
+    elif args.appr == 'cassle_byol':
+        model, loss, optimizer = train_cassle_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear,  device, args)
     elif args.appr == 'cassle_cosine_barlow': #CVPR main paper
         model, loss, optimizer = train_cassle_cosine_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, transform, transform_prime,  device, args)
     elif args.appr == 'cassle_cosine_linear_barlow': #CVPR main paper
@@ -535,6 +570,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow_ering(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime) 
     elif args.appr == 'cosine_ering_barlow': #cosine + ering + barlow
         model, loss, optimizer = train_cosine_ering_barlow(model, train_data_loaders_generic, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
+    elif args.appr == 'byol_cassle_ering':
+        model, loss, optimizer =  train_cassle_ering_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     elif args.appr == 'gpm_barlow': #gpm+barlow
         model, loss, optimizer = train_gpm_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args) 
     elif args.appr == 'barlow_ering_contrast' or args.appr == 'barlow_cassle_ering' or args.appr == 'barlow_ering_negcontrast' or args.appr == 'barlow_ering_augcontrast' or args.appr == 'barlow_ering_inputmixcontrast':
@@ -549,8 +586,12 @@ if __name__ == "__main__":
         model, loss, optimizer = train_infomax_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_iomix':
         model, loss, optimizer = train_simclr_iomix(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'byol_iomix':
+        model, loss, optimizer = train_iomix_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_mixed_distillation':
         model, loss, optimizer =  train_simclr_mixed_distillation(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'byol_mixed_distillation':
+        model, loss, optimizer =  train_mixed_distillation_byol(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'simclr_cassle_ering':
         model, loss, optimizer =   train_cassle_ering_simclr(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'infomax_cassle_ering':
