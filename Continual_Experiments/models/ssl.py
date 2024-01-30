@@ -76,11 +76,17 @@ class Encoder(nn.Module):
                 nn.ReLU(inplace=True),
                 nn.Linear(hidden_dim, output_dim,bias=False),)
 
-        if 'simclr' in appr_name or 'byol' in appr_name:
+        if 'simclr' in appr_name:
             self.projector = nn.Sequential(
                 nn.Linear(input_dim, hidden_dim),
                 nn.ReLU(inplace=True),
                 nn.Linear(hidden_dim, output_dim,bias=False),)
+        if 'byol' in appr_name:
+            self.projector = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.BatchNorm1d(hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, output_dim),)
             #self.projector = nn.Sequential(
             #    nn.Linear(input_dim, hidden_dim),
             #    nn.ReLU(inplace=True),
