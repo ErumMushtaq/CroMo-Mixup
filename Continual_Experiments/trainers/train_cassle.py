@@ -687,7 +687,7 @@ def train_cassle_byol(model, train_data_loaders, knn_train_data_loaders, test_da
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
         model.task_id = task_id
-        init_lr = args.pretrain_base_lr
+        init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
 
@@ -776,7 +776,7 @@ def train_cassle_byol(model, train_data_loaders, knn_train_data_loaders, test_da
             param.requires_grad = False
         
         if task_id < len(train_data_loaders)-1:
-            lin_epoch = 1
+            lin_epoch = 100
             num_class = np.sum(args.class_split[:task_id+1])
             classifier = LinearClassifier(num_classes = num_class).to(device)
             lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler

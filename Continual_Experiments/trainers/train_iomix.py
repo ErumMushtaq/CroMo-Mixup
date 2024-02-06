@@ -712,7 +712,7 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
         model.task_id = task_id
-        init_lr = args.pretrain_base_lr
+        init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
 
@@ -786,8 +786,8 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
                     loss = loss.mean()
                    
                     #Question: how to handle teacher prediction for the mixup
-                    ood_loss = 0.5*(lam* loss_func(z1[curr_task_size:], z1[:old_task_size]) + (1-lam)* loss_func(z1[curr_task_size:], p1old))+\
-                    0.5*(lam* loss_func(z2[curr_task_size:], z2[:old_task_size]) + (1-lam)* loss_func(z2[curr_task_size:], p2old))
+                    ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], p1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], p1old))+\
+                    0.5*(lam* loss_func(p2[curr_task_size:], p2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], p2old))
 
                     loss += ood_loss.mean() 
 
@@ -841,7 +841,7 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
         y_old = torch.cat((y_old, y_samp), dim=0)
         
         if task_id < len(train_data_loaders)-1:
-            lin_epoch = 1
+            lin_epoch = 100
             num_class = np.sum(args.class_split[:task_id+1])
             classifier = LinearClassifier(num_classes = num_class).to(device)
             lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler

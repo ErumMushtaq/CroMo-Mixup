@@ -370,7 +370,7 @@ if __name__ == "__main__":
             T.RandomHorizontalFlip(p=0.5),
             RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
             T.RandomResizedCrop((32, 32)),
-            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+            T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
             RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
@@ -378,7 +378,7 @@ if __name__ == "__main__":
             T.RandomHorizontalFlip(p=0.5),
             RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
             T.RandomResizedCrop((32, 32)),
-            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+            T.Normalize(mean=mean, std=std)])
 
      
         
@@ -408,8 +408,8 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr, dataset=args.dataset)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
-        # if 'byol' in args.appr:
-        #     model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
+        if 'byol' in args.appr:
+            model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*sum(args.epochs))
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr or 'simclr' in args.appr:
         proj_hidden = args.proj_hidden

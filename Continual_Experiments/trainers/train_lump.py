@@ -214,14 +214,14 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
         cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
         eval_transform = transforms.Compose([
                 transforms.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
-                transforms.RandomHorizontalFlip(),
+                transforms.RandomHorizontalFlip(p=0.5),
                 transforms.Normalize(*cifar_norm)
                 ])
     elif args.dataset == 'cifar100':
         cifar_norm = [[0.5071, 0.4865, 0.4409], [0.2673, 0.2564, 0.2762]] #just to make it consistent with the normalization we apply for BT, in lump they used cofar10 norm values.
         eval_transform = transforms.Compose([
                 transforms.RandomResizedCrop(32, scale=(0.08, 1.0), ratio=(3.0/4.0,4.0/3.0), interpolation=Image.BICUBIC),
-                transforms.RandomHorizontalFlip(),
+                transforms.RandomHorizontalFlip(p=0.5),
                 transforms.Normalize(*cifar_norm)
                 ])
 
@@ -272,7 +272,7 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
                     if buffer.is_empty():
                         model, optimizer = process_batch(x1, x2, model, cross_loss, optimizer, epoch_loss, args)
                     else:
-                        buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=eval_transform)
+                        buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=transform_prime)
                         buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
                         lam = np.random.beta(0.4, 0.4) #0.4
                         mixed_x = lam * x1 + (1 - lam) * buf_inputs[:x1.shape[0]]
@@ -287,7 +287,7 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
                 end = time.time()
                 print('epoch end')
                 if (epoch+1) % args.knn_report_freq == 0:
-                    knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
+                    knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=5, sigma=0.5) 
                     wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
                     for i, acc in enumerate(task_acc_arr):
                         wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
