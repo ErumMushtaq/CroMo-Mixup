@@ -14,12 +14,15 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.getcwd(), "")))
 from dataloaders.dataloader_cifar10 import get_cifar10
 from dataloaders.dataloader_cifar100 import get_cifar100
 # from dataloaders.dataloader_cifar10 import get_cifar10
-from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, linear_evaluation_task_confusion
+from utils.eval_metrics import linear_evaluation, get_t_SNE_plot, linear_evaluation_task_confusion, linear_test_sup
+ 
 from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 # from models.simsiam import Encoder, Predictor, SimSiam, InfoMax, BarlowTwins
 # from trainers.train_dist_ering import 
 from trainers.train import train_infomax, train_barlow, train_simsiam, train_byol
+from trainers.train_sup3 import train_sup3
+from trainers.train_sup2 import train_sup2
 from trainers.train_sup import train_sup
 from trainers.train_concat import train_concate
 from models.resnet import resnetc18
@@ -95,6 +98,7 @@ def add_args(parser):
     parser.add_argument('--num_workers', type=int, default=1, metavar='N', help='num of workers')
     parser.add_argument('--algo', type=str, default='simsiam', help='ssl algorithm')
     parser.add_argument('--exp_type', type=str, default='basic',help='concat, basic')
+    parser.add_argument('--sup_type', type=str, default='type1',help='concat, basic')
 
     # Infomax Args
     # parser.add_argument('--cov_loss_weight', type=float, default=1.0)
@@ -252,8 +256,8 @@ if __name__ == "__main__":
     # print(num_worker)
     train_data_loaders, train_data_loaders_knn, test_data_loaders, _, train_data_loaders_linear, _, train_data_loaders_generic = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = args.dataset_type)
-
-
+    _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _,_ = get_dataloaders(transform, transform_prime, \
+                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = args.dataset_type)
     #Create Model
     if 'simsiam' in args.appr or 'byol' in args.appr:
         print("Creating Model for Simsiam or BYOL..")
@@ -281,8 +285,14 @@ if __name__ == "__main__":
     #Training
     print("Starting Training..")
     if args.algo == 'supervised':
-        model, loss, optimizer = train_sup(model, train_data_loaders, test_data_loaders_all[0], device, args)
-        torch.save(model, "./checkpoints/"+str(time.time())+"model")
+        if args.sup_type == 'type1':
+            model, loss, optimizer = train_sup(model, train_data_loaders_linear, test_data_loaders_all[0], device, args)
+        elif args.sup_type == 'type2':
+            model, loss, optimizer = train_sup2(model, train_data_loaders_linear, test_data_loaders_all[0], device, args)
+        elif args.sup_type == 'type3':
+            model, loss, optimizer = train_sup3(model, train_data_loaders_linear, test_data_loaders_all[0], device, args)
+        # model, loss, optimizer = train_sup(model, train_data_loaders, test_data_loaders_all[0], device, args)
+        torch.save(model, "./checkpoints/"+str(time.time())+"supmodel")
     else:
         if args.exp_type == 'basic':
             if 'infomax' in args.appr: 
@@ -298,45 +308,53 @@ if __name__ == "__main__":
 
     #Test Linear classification acc
     print("Starting Classifier Training..")
-    if args.is_debug:
-        lin_epoch = 1
-    else:
-        lin_epoch = 100
-    if args.dataset == 'cifar10':
-        classifier = LinearClassifier(num_classes = 10).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-        # in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
-        # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
-    elif args.dataset == 'cifar100':
-        classifier = LinearClassifier(num_classes = 100).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-        lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+    if args.algo != 'supervised':
+        if args.is_debug:
+            lin_epoch = 1
+        else:
+            lin_epoch = 100
+        if args.dataset == 'cifar10':
+            classifier = LinearClassifier(num_classes = 10).to(device)
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
+            # in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
+            # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
+        elif args.dataset == 'cifar100':
+            classifier = LinearClassifier(num_classes = 100).to(device)
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
 
 
-    _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
-                                        classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
+        _, _, test_data_loaders_all, _, train_data_loaders_linear_all, _, _ = get_dataloaders(transform, transform_prime, \
+                                            classes=[num_classes], valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker)
 
 
-    test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_linear_all[0],
-                                                                    test_data_loaders_all[0],lin_optimizer, classifier, 
-                                                                    lin_scheduler, epochs=lin_epoch, device=device)
-    # save your encoder network
-    save_checkpoint({
-                    'epoch': args.epochs + 1,
-                    'arch': 'resnet18',
-                    'lr': args.pretrain_base_lr,
-                    'state_dict': model.state_dict(),
-                    'optimizer' : optimizer.state_dict(),
-                    'loss': loss,
-                    'encoder': model.encoder.backbone.state_dict(),
-                    'classifier': classifier.state_dict(),
-                }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_algo_{}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.appr, args.class_split, args.pretrain_batch_size))
+        test_loss, test_acc1, test_acc5, classifier = linear_evaluation(model, train_data_loaders_linear_all[0],
+                                                                        test_data_loaders_all[0],lin_optimizer, classifier, 
+                                                                        lin_scheduler, epochs=lin_epoch, device=device)
+        # save your encoder network
+        save_checkpoint({
+                        'epoch': args.epochs + 1,
+                        'arch': 'resnet18',
+                        'lr': args.pretrain_base_lr,
+                        'state_dict': model.state_dict(),
+                        'optimizer' : optimizer.state_dict(),
+                        'loss': loss,
+                        'encoder': model.encoder.backbone.state_dict(),
+                        'classifier': classifier.state_dict(),
+                    }, is_best=False, filename='./checkpoints/checkpoint_{:04f}_algo_{}_cs_{}_bs_{}.pth.tar'.format(args.pretrain_base_lr, args.appr, args.class_split, args.pretrain_batch_size))
 
+    
     args.class_split = args.val_class_split
     _, _, test_data_loaders, _, _, _, _ = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = "class_incremental")
-    wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
+    if args.algo == 'supervised':
+        loss, test_acc1, acc5 = linear_test_sup(model, test_data_loaders_all[0], args.epochs, device)
+        classifier = []
+        mode = 'sup'
+    else:
+        mode = 'unsup'
+    wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device, mode=mode)
 
 
     print(' Linear Acc '+str(test_acc1))

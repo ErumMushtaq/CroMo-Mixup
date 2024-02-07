@@ -213,8 +213,8 @@ class ResNet(nn.Module):
 def resnet18():
     return ResNet(input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=1000, c1_kernel=7, c1_stride=2, c1_pad=3, maxpool=True)
 
-def resnetc18(normalization = 'batch', weight_standard = False):
-    return ResNet(input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=10, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False,normalization = normalization, weight_standard = weight_standard)
+def resnetc18(classes = 10, normalization = 'batch', weight_standard = False):
+    return ResNet(input_channels=3, output_channels_list=[64, 128, 256, 512], layer_depths=[2,2,2,2], num_classes=classes, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False,normalization = normalization, weight_standard = weight_standard)
 
 def resnetc20():
     return ResNet(input_channels=3, output_channels_list=[16, 32, 64, 64], layer_depths=[3,3,3,None], num_classes=10, c1_kernel=3, c1_stride=1, c1_pad=1, maxpool=False)
