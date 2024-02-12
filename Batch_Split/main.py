@@ -20,7 +20,7 @@ from models.linear_classifer import LinearClassifier
 from models.ssl import  SimSiam, Siamese, Encoder, Predictor
 # from models.simsiam import Encoder, Predictor, SimSiam, InfoMax, BarlowTwins
 # from trainers.train_dist_ering import 
-from trainers.train import train_infomax, train_barlow, train_simsiam, train_byol
+from trainers.train import train_infomax, train_barlow, train_simsiam, train_byol, train_simclr
 from trainers.train_sup3 import train_sup3
 from trainers.train_sup2 import train_sup2
 from trainers.train_sup import train_sup
@@ -118,6 +118,10 @@ def add_args(parser):
     parser.add_argument('--proj_hidden', type=int, default=2048)
     parser.add_argument('--proj_out', type=int, default=2048)
     parser.add_argument('--appr', type=str, default='basic', help='Approach name, basic, PFR') #approach
+
+    #simclr args
+    parser.add_argument('--temperature', type=float, default=0.07)
+
 
     parser.add_argument('--pred_hidden', type=int, default=512)
     parser.add_argument('--pred_out', type=int, default=2048)
@@ -243,6 +247,24 @@ if __name__ == "__main__":
                 T.RandomSolarize(0.51, p=0.2),
                 T.Normalize(mean=mean, std=std)])
 
+    if 'simclr' in args.appr:
+        #augmentations
+        transform = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                #T.RandomApply([GaussianBlur()], p=1.0),#it is definitely applied: https://github.com/sthalles/SimCLR/blob/master/data_aug/contrastive_learning_dataset.py
+                T.Normalize(mean=mean, std=std)])
+
+        transform_prime = T.Compose([
+                T.RandomResizedCrop(size=32, scale=(0.2, 1.0)),
+                T.RandomHorizontalFlip(),
+                T.RandomApply(torch.nn.ModuleList([T.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1)]), p=0.8),
+                T.RandomGrayscale(p=0.2),
+                #T.RandomApply([GaussianBlur()], p=1.0),#it is definitely applied
+                T.Normalize(mean=mean, std=std)])
+
 
     
     if args.algo == 'supervised':
@@ -272,7 +294,7 @@ if __name__ == "__main__":
         if 'byol' in args.appr:
             model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
         model.to(device) #automatically detects from model
-    if 'infomax' in args.appr or 'barlow' in args.appr:
+    if 'infomax' in args.appr or 'barlow' in args.appr or 'simclr' in args.appr:
         proj_hidden = args.proj_hidden
         proj_out = args.proj_out
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr)
@@ -288,7 +310,7 @@ if __name__ == "__main__":
         if args.sup_type == 'type1':
             model, loss, optimizer = train_sup(model, train_data_loaders_linear, test_data_loaders_all[0], device, args)
         elif args.sup_type == 'type2':
-            model, loss, optimizer = train_sup2(model, train_data_loaders_linear, test_data_loaders_all[0], device, args)
+            model, loss, optimizer = train_sup2(model, train_data_loaders_linear, train_data_loaders_linear_all[0], test_data_loaders_all[0], device, args)
         elif args.sup_type == 'type3':
             model, loss, optimizer = train_sup3(model, train_data_loaders_linear, test_data_loaders_all[0], device, args)
         # model, loss, optimizer = train_sup(model, train_data_loaders, test_data_loaders_all[0], device, args)
@@ -303,6 +325,8 @@ if __name__ == "__main__":
                 model, loss, optimizer = train_simsiam(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
             elif 'byol' in args.appr:
                 model, loss, optimizer = train_byol(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
+            elif 'simclr' in args.appr:
+                model, loss, optimizer = train_simclr(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
         else:
             model, loss, optimizer = train_concate(model, train_data_loaders, test_data_loaders, train_data_loaders_knn, train_data_loaders_linear, device, args)
 
@@ -346,7 +370,7 @@ if __name__ == "__main__":
 
     
     args.class_split = args.val_class_split
-    _, _, test_data_loaders, _, _, _, _ = get_dataloaders(transform, transform_prime, \
+    _, _, test_data_loaders, _, train_data_loaders_linear, _, _ = get_dataloaders(transform, transform_prime, \
                                         classes=args.class_split, valid_rate = 0.00, batch_size=batch_size, seed = 0, num_worker= num_worker, dl_type = "class_incremental")
     if args.algo == 'supervised':
         loss, test_acc1, acc5 = linear_test_sup(model, test_data_loaders_all[0], args.epochs, device)
@@ -355,7 +379,11 @@ if __name__ == "__main__":
     else:
         mode = 'unsup'
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device, mode=mode)
-
+    wandb.log({" Linear Layer Test - TP Acc": tp})
+    wandb.log({" Linear Layer Test - WP Acc": wp})
+    wp, tp = linear_evaluation_task_confusion(model, classifier, train_data_loaders_linear, args, device, mode=mode)
+    wandb.log({" Linear Layer Train - TP Acc": tp})
+    wandb.log({" Linear Layer Train - WP Acc": wp})
 
     print(' Linear Acc '+str(test_acc1))
     print(" Linear WP "+str(wp))

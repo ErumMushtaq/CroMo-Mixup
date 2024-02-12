@@ -71,21 +71,21 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
                         transforms.CenterCrop(random_crop_size),
                         transforms.Normalize(data_normalize_mean, data_normalize_std),
                     ] )
-                #for supervised learning results
-                transform_linear = transforms.Compose([
-                    #transforms.ToPILImage(),
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(15),
-                    # transforms.ToTensor(),
-                    transforms.Normalize(data_normalize_mean, data_normalize_std)
-                ])
+                # #for supervised learning results
+                # transform_linear = transforms.Compose([
+                #     #transforms.ToPILImage(),
+                #     transforms.RandomCrop(32, padding=4),
+                #     transforms.RandomHorizontalFlip(),
+                #     transforms.RandomRotation(15),
+                #     # transforms.ToTensor(),
+                #     transforms.Normalize(data_normalize_mean, data_normalize_std)
+                # ])
 
-                # transform_linear = transforms.Compose( [
-                #         transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
-                #         transforms.RandomHorizontalFlip(),
-                #         transforms.Normalize(data_normalize_mean, data_normalize_std),
-                #     ] )
+                transform_linear = transforms.Compose( [
+                        transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                        transforms.RandomHorizontalFlip(),
+                        transforms.Normalize(data_normalize_mean, data_normalize_std),
+                    ] )
             else:
                 transform_test = valid_transform
                 transform_linear = valid_transform
@@ -136,7 +136,7 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
             xtrain = xtrain_by_class[:, (t*train_num)+nvalid:(t+1)*train_num].clone().reshape(-1, 3, 32, 32)
             ytrain = ytrain_by_class[:, (t*train_num)+nvalid:(t+1)*train_num].clone().reshape(-1).type(torch.int64)
             xtest = xtest_by_class[:, t*test_num:(t+1)*test_num].clone().reshape(-1, 3, 32, 32)
-            ytest = ytest_by_class[:, t*test_num:(t+1)*test_num].clone().reshape(-1)
+            ytest = ytest_by_class[:, t*test_num:(t+1)*test_num].clone().reshape(-1).type(torch.int64)
             print(xtrain.shape)
             data_normalize_mean = (0.5071, 0.4865, 0.4409)
             data_normalize_std = (0.2673, 0.2564, 0.2762)
@@ -149,6 +149,16 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
                         transforms.CenterCrop(random_crop_size),
                         transforms.Normalize(data_normalize_mean, data_normalize_std),
                     ] )
+
+                # #for supervised learning results
+                # transform_linear = transforms.Compose([
+                #     #transforms.ToPILImage(),
+                #     transforms.RandomCrop(32, padding=4),
+                #     transforms.RandomHorizontalFlip(),
+                #     transforms.RandomRotation(15),
+                #     # transforms.ToTensor(),
+                #     transforms.Normalize(data_normalize_mean, data_normalize_std)
+                # ])
 
                 transform_linear = transforms.Compose( [
                         transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible

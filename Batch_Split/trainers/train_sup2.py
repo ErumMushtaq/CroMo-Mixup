@@ -4,9 +4,9 @@ import torch
 import numpy as np
 import torch.nn as nn
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler
-from utils.eval_metrics import Knn_Validation, linear_test_sup
+from utils.eval_metrics import Knn_Validation, linear_test_sup, linear_test
 
-def train_sup2(model, train_data_loaders, test_data_loaders, device, args):
+def train_sup2(model, train_data_loaders, train_data_loaders_all, test_data_loaders, device, args):
 
     # Optimizer and Scheduler
     # SimSiam uses SGD, with lr = lr*BS/256 from paper + https://github.com/facebookresearch/simsiam/blob/main/main_lincls.py)
@@ -49,7 +49,13 @@ def train_sup2(model, train_data_loaders, test_data_loaders, device, args):
             optimizer.param_groups[0]['lr'] = optimizer.param_groups[0]['lr']/5
 
         if (epoch+1) % args.knn_report_freq == 0:
-            loss, acc1, acc5 = linear_test_sup(model, test_data_loaders, epoch, device)
+            loss, acc1, acc5 = linear_test(model, test_data_loaders, None, epoch, device)
+            wandb.log({" Linear Layer Test - Acc": acc1, " Epoch ": epoch})
+            loss, acc1, acc5 = linear_test(model, train_data_loaders_all, None, epoch, device)
+            wandb.log({" Linear Layer Train - Acc": acc1, " Epoch ": epoch})
+            # wandb.log({" Linear Layer Test Loss ": linear_loss / total_num, " Epoch ": epoch})
+        
+            # loss, acc1, acc5 = linear_test_sup(model, test_data_loaders, epoch, device)
             # # class_split_test_data_loader
             # # knn_acc = Knn_Validation(model, train_data_loaders_knn, test_data_loaders, device=device, K=200, sigma=0.5) 
             # wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch})

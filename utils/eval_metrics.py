@@ -377,8 +377,7 @@ def linear_test_sup(net, data_loader, epoch, device):
                                              ))
         acc_1 = total_correct_1/total_num*100
         acc_5 = total_correct_5/total_num*100
-        wandb.log({" Linear Layer Test Loss ": linear_loss / total_num, " Epoch ": epoch})
-        wandb.log({" Linear Layer Test - Acc": acc_1, " Epoch ": epoch})
+
     return total_loss / total_num, acc_1 , acc_5 
 
 def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device, mode='unsup'):
@@ -424,8 +423,6 @@ def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args,
 
     wp = total_correct_wp/total_num_task_correct
     tp = total_num_task_correct/total_num
-    wandb.log({" Linear Layer Test - TP Acc": tp})
-    wandb.log({" Linear Layer Test - WP Acc": wp})
     return wp, tp
 
 # def linear_evaluation_WP(model, classifier, test_data_loaders, args, device):
