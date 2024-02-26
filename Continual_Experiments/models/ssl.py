@@ -111,6 +111,7 @@ class Predictor(nn.Module):
         out = self.fc2(out)
         return out
 
+
 class SimSiam(nn.Module):
 
     def __init__(self, encoder, predictor):

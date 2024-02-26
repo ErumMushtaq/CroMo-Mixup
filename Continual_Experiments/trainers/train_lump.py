@@ -235,8 +235,12 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
     criterion = nn.CosineSimilarity(dim=1)
     cross_loss = BarlowTwinsLoss(lambda_param= args.lambda_param, scale_loss =args.scale_loss)
 
-    x_old = torch.Tensor([])
-    y_old = torch.tensor([],dtype=torch.long)
+    x_old = torch.Tensor([]).to(device)
+    features_old = torch.Tensor([]).to(device)
+    y_old = torch.tensor([],dtype=torch.long).to(device)
+
+    # x_old = torch.Tensor([])
+    # y_old = torch.tensor([],dtype=torch.long)
 
 
     for task_id, loader in enumerate(train_data_loaders):
@@ -272,13 +276,38 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
                     if buffer.is_empty():
                         model, optimizer = process_batch(x1, x2, model, cross_loss, optimizer, epoch_loss, args)
                     else:
-                        buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=transform_prime)
-                        buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
-                        lam = np.random.beta(0.4, 0.4) #0.4
-                        mixed_x = lam * x1 + (1 - lam) * buf_inputs[:x1.shape[0]]
-                        mixed_x_aug = lam * x2+ (1 - lam) * buf_inputs1[:x1.shape[0]]
+                        # buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=transform_prime)
+                        # buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
+                        # lam = np.random.beta(0.4, 0.4) #0.4
+                        # mixed_x = lam * x1 + (1 - lam) * buf_inputs[:x1.shape[0]]
+                        # mixed_x_aug = lam * x2 + (1 - lam) * buf_inputs1[:x1.shape[0]]
+                        # model, optimizer = process_batch(mixed_x, mixed_x_aug , model, cross_loss, optimizer, epoch_loss, args)
+
+
+                        replay_batchsize = args.replay_bs
+                        indices = np.random.randint(0,x_old.shape[0], replay_batchsize)
+                        x_old_bs = x_old[indices]
+                        x1_old = torch.Tensor([]).to(device)
+                        x2_old = torch.Tensor([]).to(device)
+                        for ind in indices:
+                            x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1])), dim=0)
+                            x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
+                        x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                        curr_task_size = x2.shape[0]
+                        if curr_task_size < args.replay_bs:
+                            old_task_size = curr_task_size
+                        else:
+                            old_task_size = args.replay_bs
+
+                        # old_task_size = x.shape[0]
+                        lam = np.random.beta(args.alpha, args.alpha)
+                        mix_x1 = lam * x1[:old_task_size] + (1 - lam) * x1_old[:old_task_size]
+                        mix_x2 = lam * x2[:old_task_size] + (1 - lam) * x2_old[:old_task_size]
+
+                        mixed_x = torch.cat([x1, mix_x1], dim =0)
+                        mixed_x_aug = torch.cat([x2, mix_x2], dim =0)        
                         model, optimizer = process_batch(mixed_x, mixed_x_aug , model, cross_loss, optimizer, epoch_loss, args)
-                    buffer.add_data(examples=x, logits=x2)
+                    # buffer.add_data(examples=x, logits=x2)
 
 
                 epoch_counter += 1
@@ -322,7 +351,8 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
            lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
            linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
 
-        x_samp, y_samp = store_samples(loader, task_id, 30)
+        x_samp, y_samp = store_samples(loader, task_id, args.msize)
+        x_samp, y_samp = x_samp.to(device), y_samp.to(device)
         x_old = torch.cat((x_old, x_samp), dim=0)
         y_old = torch.cat((y_old, y_samp), dim=0)
 

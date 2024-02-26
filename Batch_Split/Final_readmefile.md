@@ -28,22 +28,22 @@ main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --lam
 
 ## BYOL
 ### CIL
-main.py -cs 100 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization batch --cuda_device 0 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --algo byol --appr byol --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --pretrain_batch_size 1024
+main.py -cs 100 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization batch --cuda_device 2 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --algo byol --appr byol --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --pretrain_batch_size 1024
 
-main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 0 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --algo byol --appr byol --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --pretrain_batch_size 1024
+main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 3 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --algo byol --appr byol --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --pretrain_batch_size 1024
 
 ### DIL
-main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 5 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --algo byol --appr byol --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --pretrain_batch_size 1024 -dl_type data_incremental
+main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 4 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --algo byol --appr byol --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --pretrain_batch_size 1024 -dl_type data_incremental
 
 
 ## SIMCLR
 ### CIL
 python main.py -cs 100 --epochs 1000 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 5 --pretrain_batch_size 512 --appr simclr --algo simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --knn_report_freq 25 --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 
 
-python main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 5 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 5 --pretrain_batch_size 512 --appr simclr --algo simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --knn_report_freq 1 --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10
+python main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 0 --pretrain_batch_size 512 --appr simclr --algo simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --knn_report_freq 1 --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10
 
 ### DIL
-python main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 5 --pretrain_batch_size 512 --appr simclr --algo simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --knn_report_freq 25 --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 -dl_type data_incremental
+python main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 1000 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 1 --pretrain_batch_size 512 --appr simclr --algo simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --knn_report_freq 25 --exp_type basic -vcs 10,10,10,10,10,10,10,10,10,10 -dl_type data_incremental
 
 
 
