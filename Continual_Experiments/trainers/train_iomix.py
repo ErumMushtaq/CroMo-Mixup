@@ -806,11 +806,17 @@ def collect_params(model, exclude_bias_and_bn=True):
         param_list.append(param_dict)
     return param_list
 
-def loss_func(x, y):
+# def loss_func(x, y):
+#    # L2 normalization
+#    x = F.normalize(x, dim=-1, p=2)
+#    y = F.normalize(y, dim=-1, p=2)
+#    return 2 - 2 * (x * y).sum(dim=-1)
+
+def loss_func(p, z):
    # L2 normalization
-   x = F.normalize(x, dim=-1, p=2)
-   y = F.normalize(y, dim=-1, p=2)
-   return 2 - 2 * (x * y).sum(dim=-1)
+   p = F.normalize(p, dim=-1, p=2)
+   z = F.normalize(z, dim=-1, p=2)
+   return 2 - 2 * (p * z.detach()).sum(dim=1).mean()
 
    
 def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime):
@@ -833,6 +839,8 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
     features_old = torch.Tensor([]).to(device)
     y_old = torch.tensor([],dtype=torch.long).to(device)
     step_number = 0
+    model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*sum(args.epochs))
+    step_number = 0
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
         model.task_id = task_id
@@ -841,12 +849,11 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
 
-        optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
-        scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
-        model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
+        optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)  
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id])        
+        # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
+        # model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
         loss_ = []
-        
-        
         for epoch in range(args.epochs[task_id]):
             start = time.time()
             model.train()
@@ -882,8 +889,8 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
                     x_old_bs = x_old[indices]
                     # print(x_old.shape)
                     for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
+                        x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
                     x1_old, x2_old = x1_old.to(device), x2_old.to(device)
 
                     curr_task_size = x2.shape[0]
@@ -899,23 +906,25 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
                     x2_hat = torch.cat((x2, mix_x2))
 
                     z1, z2, p1, p2 = model(x1_hat, x2_hat)
-                    z1old, z2old, p1old, p2old = model(x1_old, x2_old)
+                    
 
                     with torch.no_grad():
                         target_z1 = model.teacher_model(x1[:curr_task_size])
                         target_z2 = model.teacher_model(x2[:curr_task_size])
+                        z1old = model.teacher_model(x1_old[:old_task_size])
+                        z2old = model.teacher_model(x2_old[:old_task_size])
 
                     loss_one = loss_func(p1[:curr_task_size], target_z2.detach())
                     loss_two = loss_func(p2[:curr_task_size], target_z1.detach())
                     loss = 0.5*loss_one + 0.5*loss_two
                     loss = loss.mean()
 
-                    ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], p1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], p1old))+\
-                    0.5*(lam* loss_func(p2[curr_task_size:], p2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], p2old))
+                    # ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], p1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], p1old))+\
+                    # 0.5*(lam* loss_func(p2[curr_task_size:], p2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], p2old))
                    
-                    #Question: how to handle teacher prediction for the mixup
-                    ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], p1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], p1old))+\
-                    0.5*(lam* loss_func(p2[curr_task_size:], p2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], p2old))
+                    #Question: how to handle teacher prediction for the mixup (1st option), second is get z's of mixed from the teacher and other the current model
+                    ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], target_z1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], z1old[:old_task_size]))+\
+                    0.5*(lam* loss_func(p2[curr_task_size:], target_z2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], z2old[:old_task_size]))
 
                     loss += ood_loss.mean() 
 
@@ -969,7 +978,7 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
         y_old = torch.cat((y_old, y_samp), dim=0)
         
         if task_id < len(train_data_loaders)-1:
-            lin_epoch = 100
+            lin_epoch = 1
             num_class = np.sum(args.class_split[:task_id+1])
             classifier = LinearClassifier(num_classes = num_class).to(device)
             lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler

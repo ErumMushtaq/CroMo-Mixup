@@ -246,3 +246,26 @@ python3 main_cont.py -cs 20,20,20,20,20 -e 750,750,750,750,750 --dataset cifar10
 
 #BYOL CaSSLe
 python3 main_cont.py -cs 20,20,20,20,20 -e 750,750,750,750,750 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 0 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr cassle_byol --knn_report_freq 25 --pretrain_batch_size 256 --msize 500 --bsize 64
+
+python3 main_cont.py -cs 20,20,20,20,20 -e 750,750,750,750,750 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 2 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr ering_byol --knn_report_freq 1 --pretrain_batch_size 256 --msize 500 --bsize 64
+
+#BYOL iomix
+python3 main_cont.py -cs 20,20,20,20,20 -e 750,750,750,750,750 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 3 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr byol_iomix --knn_report_freq 25 --pretrain_batch_size 256 --msize 500 --bsize 64
+
+#
+python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 2 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr ering_byol --knn_report_freq 50 --pretrain_batch_size 256 --msize 500 --bsize 64
+
+
+##### BYOL CIFAR100
+python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 2 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr basic_byol --knn_report_freq 50 --pretrain_batch_size 256 --msize 500 --bsize 64
+
+python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 0 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr cassle_byol --knn_report_freq 50 --pretrain_batch_size 256 --msize 100 --bsize 64
+
+
+##### CIFAR10 BYOL
+python3 main_cont.py -cs 5,5 --epochs 500,500 --dataset cifar10 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 0 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr basic_byol --knn_report_freq 25 --pretrain_batch_size 256
+python3 main_cont.py -cs 5,5 --epochs 500,500 --dataset cifar10 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 1 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr ering_byol --knn_report_freq 25 --pretrain_batch_size 256
+python3 main_cont.py -cs 5,5 --epochs 500,500 --dataset cifar10 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 2 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr cassle_byol --knn_report_freq 25 --pretrain_batch_size 256
+python3 main_cont.py -cs 10 --epochs 1000 --dataset cifar10 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 3 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr basic_byol --knn_report_freq 25 --pretrain_batch_size 256
+python3 main_cont.py -cs 100 --epochs 1000 --dataset cifar100 --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --normalization group --weight_standard --cuda_device 4 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-6 --appr basic_byol --knn_report_freq 25 --pretrain_batch_size 256
+

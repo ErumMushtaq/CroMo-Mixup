@@ -463,8 +463,8 @@ def train_ering_byol(model, train_data_loaders, knn_train_data_loaders, train_da
                     x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
                     for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
                     x1_old, x2_old = x1_old.to(device), x2_old.to(device)
 
                     x1 = torch.cat([x1, x1_old], dim=0)

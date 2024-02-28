@@ -790,6 +790,7 @@ def train_cassle_byol(model, train_data_loaders, knn_train_data_loaders, test_da
                         }, file_name)
 
         oldModel = deepcopy(model.encoder)  # save t-1 model
+        # oldModel = deepcopy(model.teacher_model)  # save t-1 model
         oldModel.to(device)
         oldModel.train()
         for param in oldModel.parameters(): #Freeze old model

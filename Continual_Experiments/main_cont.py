@@ -672,6 +672,9 @@ if __name__ == "__main__":
 
 
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
+    wandb.log({" Linear Layer Test - TP Acc": tp})
+    wandb.log({" Linear Layer Test - WP Acc": wp})
+
 
     file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 
     # save your encoder network
