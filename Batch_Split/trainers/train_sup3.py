@@ -4,23 +4,23 @@ import torch
 import numpy as np
 import torch.nn as nn
 from utils.lr_schedulers import LinearWarmupCosineAnnealingLR, SimSiamScheduler, WarmUpLR
+from utils.lars import LARS
 from utils.eval_metrics import linear_test
 
 
-def train_sup(model, train_data_loaders, test_data_loaders, device, args):
+def train_sup3(model, train_data_loaders, test_data_loaders, device, args):
     # Optimizer and Scheduler
     # optimizer = torch.optim.Adam(model.parameters(), lr=args.pretrain_base_lr, weight_decay=args.pretrain_weight_decay)
-    #Ref: https://github.com/yuanli2333/Teacher-free-Knowledge-Distillation/blob/master/train_kd.py
-    optimizer = torch.optim.SGD(model.parameters(), lr=args.pretrain_base_lr * (args.pretrain_batch_size / 128), momentum=0.9,
-                                  weight_decay=5e-4)
+    #Ref: https://github.com/JosephChenHub/pytorch-lars/blob/master/main.py
+    optimizer = LARS(model.parameters(), lr=args.pretrain_base_lr, weight_decay=args.pretrain_weight_decay)
+    warmup_ratio = float(5 * 1.0 / args.epochs)
+    print(warmup_ratio)
     iter_per_epoch = len(train_data_loaders[0])*len(train_data_loaders)
-    warmup_scheduler = WarmUpLR(optimizer, iter_per_epoch * 1)
-    # optimizer = torch.optim.SGD(model.parameters(), lr=args.pretrain_base_lr, weight_decay=args.pretrain_weight_decay, 
-    #                             momentum=args.pretrain_momentum, nesterov=True)
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, milestones=[60, 120, 160], gamma=0.2)
-    # scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, args.pretrain_base_lr, 
-    #                                                 epochs=args.epochs, steps_per_epoch=len(train_data_loaders[0])*len(train_data_loaders))
-
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=args.pretrain_base_lr, \
+                steps_per_epoch=iter_per_epoch, epochs=int(args.epochs*1.0), \
+                anneal_strategy='linear', pct_start=warmup_ratio,
+                div_factor=25, final_div_factor=10, cycle_momentum=False, \
+                base_momentum=0.9, max_momentum=0.9)
     criterion = nn.CrossEntropyLoss()
     loss_ = []
     for epoch in range(args.epochs):
@@ -29,10 +29,6 @@ def train_sup(model, train_data_loaders, test_data_loaders, device, args):
         epoch_loss = []
         true_samples = 0
         total_samples = 0
-        if epoch > 0:
-            scheduler.step(epoch)
-        else:
-            warmup_scheduler.step()
         for data in zip(*train_data_loaders):
             for x1, y in data:  
                 x1 = x1.to(device) 
@@ -46,7 +42,7 @@ def train_sup(model, train_data_loaders, test_data_loaders, device, args):
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step() 
-        
+        scheduler.step()
         loss_.append(np.mean(epoch_loss))
 
         model.eval()

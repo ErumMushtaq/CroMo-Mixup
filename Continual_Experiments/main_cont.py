@@ -54,7 +54,7 @@ from trainers.train_LRD_cross import  train_LRD_cross_barlow
 from trainers.train_LRD_replay import train_LRD_replay_infomax, train_LRD_replay_barlow
 from trainers.train_PFR_contrastive import train_PFR_contrastive_simsiam
 from trainers.train_contrastive import train_contrastive_simsiam
-from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow, train_ering_simclr
+from trainers.train_ering import train_ering_simsiam,train_ering_infomax,train_ering_barlow, train_ering_simclr, train_ering_byol
 from trainers.train_dist_ering import train_dist_ering_infomax
 from trainers.train_cassle_ering import train_cassle_barlow_ering, train_cassle_ering_simclr, train_cassle_ering_infomax,  train_cassle_ering_byol
 # from trainers.train_cassle_contrast import train_infomax_iomix, train_cassle_infomax_mixed_distillation, train_cassle_barlow_ering_contrast, train_cassle_barlow_mixed_distillation, train_cassle_barlow_principled_iomix, train_cassle_barlow_iomixup, train_cassle_barlow_inputmixup
@@ -67,7 +67,7 @@ from trainers.train_GPM_cosine import train_gpm_cosine_barlow
 from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
 from trainers.train_lump import train_lump_barlow
-from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix, train_iomix_byol
+from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix, train_iomix_byol, train_cassle_barlow_mixup
 from trainers.train_mixed_distillation import train_cassle_infomax_mixed_distillation, train_cassle_barlow_mixed_distillation,  train_simclr_mixed_distillation, train_mixed_distillation_byol
 from trainers.train_cassle_contrast import  train_cassle_barlow_ering_contrast,  train_cassle_barlow_principled_iomix, train_cassle_barlow_inputmixup
 
@@ -362,25 +362,48 @@ if __name__ == "__main__":
                 T.Normalize(mean=mean, std=std)])
 
     #https://github.com/The-AI-Summer/byol-cifar10/blob/main/AI_Summer_BYOL_in_CIFAR10.ipynb
-    if 'byol' in args.appr: # SImCLR augmentation (ref: https://github.com/lucidrains/byol-pytorch/blob/master/byol_pytorch/byol_pytorch.py)
+    # if 'byol' in args.appr: # SImCLR augmentation (ref: https://github.com/lucidrains/byol-pytorch/blob/master/byol_pytorch/byol_pytorch.py)
+    #     transform = T.Compose([
+    #         RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8), #0.3
+    #         T.RandomGrayscale(p=0.2),
+    #         T.RandomHorizontalFlip(p=0.5),
+    #         RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5), #0.2, 
+    #         T.RandomResizedCrop((32, 32)),
+    #         T.Normalize(mean=mean, std=std)])
+
+    #     transform_prime = T.Compose([
+    #         RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
+    #         T.RandomGrayscale(p=0.2),
+    #         T.RandomHorizontalFlip(p=0.5),
+    #         RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
+    #         T.RandomResizedCrop((32, 32)),
+    #         T.Normalize(mean=mean, std=std)])
+
+    #https://github.com/DonkeyShot21/cassle/blob/main/bash_files/continual/cifar/byol.sh
+    # https://github.com/DonkeyShot21/essential-BYOL/blob/main/data_utils/transforms.py
+    if 'byol' in args.appr:
         transform = T.Compose([
-            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
-            T.RandomGrayscale(p=0.2),
-            T.RandomHorizontalFlip(p=0.5),
-            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
             T.RandomResizedCrop((32, 32)),
-            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
+            T.RandomHorizontalFlip(),
+            RandomApply(T.ColorJitter(0.4, 0.4, 0.2, 0.1), p = 0.8), #0.3
+            T.RandomGrayscale(p=0.2),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.0), #0.2,
+            T.ToPILImage(),
+            RandomApply(Solarization(),p = 0.0), 
+            T.ToTensor(),
+            T.Normalize(mean=mean, std=std)])
 
         transform_prime = T.Compose([
-            RandomApply(T.ColorJitter(0.8, 0.8, 0.8, 0.2), p = 0.8),
-            T.RandomGrayscale(p=0.2),
-            T.RandomHorizontalFlip(p=0.5),
-            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.5),
             T.RandomResizedCrop((32, 32)),
-            T.Normalize(mean=torch.tensor([0.485, 0.456, 0.406]), std=torch.tensor([0.229, 0.224, 0.225])),])
-
-     
-        
+            T.RandomHorizontalFlip(),
+            RandomApply(T.ColorJitter(0.4, 0.4, 0.2, 0.1), p = 0.8), #0.3
+            T.RandomGrayscale(p=0.2),
+            RandomApply(T.GaussianBlur((3, 3), (1.0, 2.0)),p = 0.0), #0.2,
+            T.ToPILImage(),
+            RandomApply(Solarization(),p = 0.2),
+            T.ToTensor(),
+            T.Normalize(mean=mean, std=std)])
+  
 
     #Dataloaders
     print("Creating Dataloaders..")
@@ -407,8 +430,8 @@ if __name__ == "__main__":
         encoder = Encoder(hidden_dim=proj_hidden, output_dim=proj_out, normalization = args.normalization, weight_standard = args.weight_standard, appr_name = args.appr, dataset=args.dataset)
         predictor = Predictor(input_dim=proj_out, hidden_dim=pred_hidden, output_dim=pred_out)
         model = SimSiam(encoder, predictor)
-        # if 'byol' in args.appr:
-        #     model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*len(args.class_split)*args.epochs)
+        if 'byol' in args.appr:
+            model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*sum(args.epochs))
         model.to(device) #automatically detects from model
     if 'infomax' in args.appr or 'barlow' in args.appr or 'simclr' in args.appr:
         proj_hidden = args.proj_hidden
@@ -553,6 +576,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_ering_barlow(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
     elif args.appr == 'ering_simclr': #ERING
         model, loss, optimizer = train_ering_simclr(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime) 
+    elif args.appr == 'ering_byol':
+        model, loss, optimizer = train_ering_byol(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)
     elif args.appr == 'LRD_replay_infomax': #LRD + Replay + infomax
         model, loss, optimizer = train_LRD_replay_infomax(model, train_data_loaders, train_data_loaders_knn, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime)  
     elif args.appr == 'LRD_replay_barlow': #LRD + Replay + barlow
@@ -579,6 +604,8 @@ if __name__ == "__main__":
         model, loss, optimizer = train_cassle_barlow_inputmixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'barlow_iomix':
         model, loss, optimizer = train_cassle_barlow_iomixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
+    elif args.appr == 'barlow_mixup':
+            model, loss, optimizer = train_cassle_barlow_mixup(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime) 
     elif args.appr == 'barlow_lump':
         model, loss, optimizer = train_lump_barlow(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime)
     elif args.appr == 'infomax_iomix':
@@ -644,6 +671,9 @@ if __name__ == "__main__":
 
 
     wp, tp = linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device)
+    wandb.log({" Linear Layer Test - TP Acc": tp})
+    wandb.log({" Linear Layer Test - WP Acc": wp})
+
 
     file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr)+"-CS"+str(args.class_split) + 'acc_' + str(test_acc1) +'.pth.tar' 
     # save your encoder network

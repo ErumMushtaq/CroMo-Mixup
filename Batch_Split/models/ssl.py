@@ -81,6 +81,11 @@ class Encoder(nn.Module):
                 nn.BatchNorm1d(hidden_dim),
                 nn.ReLU(inplace=True),
                 nn.Linear(hidden_dim, output_dim),)
+        if 'simclr' in appr_name:
+            self.projector = nn.Sequential(
+                nn.Linear(input_dim, hidden_dim),
+                nn.ReLU(inplace=True),
+                nn.Linear(hidden_dim, output_dim,bias=False),)
 
 
     def forward(self, x):

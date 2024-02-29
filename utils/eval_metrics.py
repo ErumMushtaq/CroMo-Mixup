@@ -342,8 +342,45 @@ def get_t_SNE_plot(test_data_loader, encoder, classifier, device, log_message='g
     targets, outputs = gen_features(test_data_loader, encoder, classifier, device)
     tsne_plot(targets, outputs, log_message=log_message, class_count=class_count)
 
+def linear_test_sup(net, data_loader, epoch, device):
+    # evaluate model:
+    net.eval() # for not update batchnorm
+    linear_loss = 0.0
+    num = 0
+    total_loss, total_correct_1, total_correct_5, total_num, test_bar = 0.0, 0.0, 0.0, 0, tqdm(data_loader)
+    with torch.no_grad():
+        for data_tuple in test_bar:
+            data, target = [t.to(device) for t in data_tuple]
 
-def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device):
+            # Forward prop of the model with single augmented batch
+            # feature = net.get_representation(data) 
+            output = net(data)
+
+
+            # Calculate Cross Entropy Loss for batch
+            linear_loss = F.cross_entropy(output, target)
+            
+            # Batchsize for loss and accuracy
+            num = data.size(0)
+            total_num += num 
+            
+            # Accumulating loss 
+            total_loss += linear_loss.item() * num 
+            # Accumulating number of correct predictions 
+            correct_top_1, correct_top_5 = correct_top_k(output, target, top_k=(1,5))    
+            total_correct_1 += correct_top_1
+            total_correct_5 += correct_top_5
+
+            test_bar.set_description('Lin.Test Epoch: [{}] Loss: {:.4f} ACC@1: {:.2f}% ACC@5: {:.2f}% '
+                                     .format(epoch,  total_loss / total_num,
+                                             total_correct_1 / total_num * 100, total_correct_5 / total_num * 100
+                                             ))
+        acc_1 = total_correct_1/total_num*100
+        acc_5 = total_correct_5/total_num*100
+
+    return total_loss / total_num, acc_1 , acc_5 
+
+def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args, device, mode='unsup'):
     total_correct_1, total_correct_5 = 0.0, 0.0
     total_num = 0.0
     total_correct_wp = 0.0
@@ -352,8 +389,11 @@ def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args,
     for task_id in range(len(args.class_split)):
         for x, target in test_data_loaders[task_id]:
             x, target = x.to(device), target.to(device)
-            features = model(x)
-            logits = classifier(features.detach()) 
+            if mode == 'unsup':
+                features = model(x)
+                logits = classifier(features.detach()) 
+            else:
+                logits = model(x)
             task_probs = torch.nn.functional.softmax(logits, dim = 1)
             prediction_tp = torch.argmax(task_probs, dim = 1)
             prediction_wp = torch.argmax(task_probs, dim = 1)
@@ -383,8 +423,6 @@ def linear_evaluation_task_confusion(model, classifier, test_data_loaders, args,
 
     wp = total_correct_wp/total_num_task_correct
     tp = total_num_task_correct/total_num
-    wandb.log({" Linear Layer Test - TP Acc": tp})
-    wandb.log({" Linear Layer Test - WP Acc": wp})
     return wp, tp
 
 # def linear_evaluation_WP(model, classifier, test_data_loaders, args, device):

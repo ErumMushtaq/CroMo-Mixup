@@ -194,23 +194,23 @@ def process_batch_mixed_distillation_contrast(x1, x2, x1_old, x2_old, model, cro
     z1, z2 = model(x1_hat, x2_hat)
 
     # # Cross model feature Mixup
-    # x1_ = torch.cat((x1, x1_old[:old_task_size]))
-    # x2_ = torch.cat((x2, x2_old[:old_task_size]))
-    # f1Old = oldModel.encoder(x1_).squeeze().detach()
-    # f2Old = oldModel.encoder(x2_).squeeze().detach()
-    # org_loss = cross_loss(z1[:curr_task_size], z2[:curr_task_size])
-    # mixed_loss = 0.5*(lam* cross_loss(z1[curr_task_size:], z1[:old_task_size]) + (1-lam)* cross_loss(z1[curr_task_size:], f1Old[curr_task_size:]))+\
-    #         0.5*(lam* cross_loss(z2[curr_task_size:], z2[:old_task_size]) + (1-lam)* cross_loss(z2[curr_task_size:], f2Old[curr_task_size:]))
-
-    # New model feature mixup
-    z1_new, z2_new = model(x1_old[:old_task_size], x2_old[:old_task_size])
-    x1_ = x1
-    x2_ = x2
+    x1_ = torch.cat((x1, x1_old[:old_task_size]))
+    x2_ = torch.cat((x2, x2_old[:old_task_size]))
     f1Old = oldModel.encoder(x1_).squeeze().detach()
     f2Old = oldModel.encoder(x2_).squeeze().detach()
     org_loss = cross_loss(z1[:curr_task_size], z2[:curr_task_size])
-    mixed_loss = 0.5*(lam* cross_loss(z1[curr_task_size:], z1[:old_task_size]) + (1-lam)* cross_loss(z1[curr_task_size:], z1_new))+\
-            0.5*(lam* cross_loss(z2[curr_task_size:], z2[:old_task_size]) + (1-lam)* cross_loss(z2[curr_task_size:], z2_new))
+    mixed_loss = 0.5*(lam* cross_loss(z1[curr_task_size:], z1[:old_task_size]) + (1-lam)* cross_loss(z1[curr_task_size:], f1Old[curr_task_size:]))+\
+            0.5*(lam* cross_loss(z2[curr_task_size:], z2[:old_task_size]) + (1-lam)* cross_loss(z2[curr_task_size:], f2Old[curr_task_size:]))
+
+    # New model feature mixup
+    # z1_new, z2_new = model(x1_old[:old_task_size], x2_old[:old_task_size])
+    # x1_ = x1
+    # x2_ = x2
+    # f1Old = oldModel.encoder(x1_).squeeze().detach()
+    # f2Old = oldModel.encoder(x2_).squeeze().detach()
+    # org_loss = cross_loss(z1[:curr_task_size], z2[:curr_task_size])
+    # mixed_loss = 0.5*(lam* cross_loss(z1[curr_task_size:], z1[:old_task_size]) + (1-lam)* cross_loss(z1[curr_task_size:], z1_new))+\
+    #         0.5*(lam* cross_loss(z2[curr_task_size:], z2[:old_task_size]) + (1-lam)* cross_loss(z2[curr_task_size:], z2_new))
 
 
     loss = org_loss + mixed_loss
