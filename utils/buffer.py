@@ -108,7 +108,7 @@ class Buffer:
         if transform is None: transform = lambda x: x
         # import pdb
         # pdb.set_trace()
-        ret_tuple = (torch.stack([transform(ee.cpu())
+        ret_tuple = (torch.stack([transform(ee)
                             for ee in self.examples[choice]]).to(self.device),)
         for attr_str in self.attributes[1:]:
             if hasattr(self, attr_str):

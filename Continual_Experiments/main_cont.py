@@ -150,8 +150,7 @@ def add_args(parser):
     # Infomax Args
     parser.add_argument('--cov_loss_weight', type=float, default=1.0)
     parser.add_argument('--sim_loss_weight', type=float, default=250.0)
-    parser.add_argument('--info_loss', type=str, default='invariance',
-                        help='infomax loss')
+    parser.add_argument('--info_loss', type=str, default='invariance',help='infomax loss')
     parser.add_argument('--R_eps_weight', type=float, default=1e-8)
     parser.add_argument('--la_mu', type=float, default=0.1)
     parser.add_argument('--la_R', type=float, default=0.1)

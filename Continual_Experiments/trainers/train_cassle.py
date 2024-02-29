@@ -467,14 +467,14 @@ def train_cassle_barlow(model, train_data_loaders, knn_train_data_loaders, test_
             
                 wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
                 wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
-                file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+            file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
-                # save your encoder network
-                torch.save({
-                                'state_dict': model.state_dict(),
-                                'optimizer' : optimizer.state_dict(),
-                                'encoder': model.encoder.backbone.state_dict(),
-                            }, file_name)
+            # save your encoder network
+            torch.save({
+                            'state_dict': model.state_dict(),
+                            'optimizer' : optimizer.state_dict(),
+                            'encoder': model.encoder.backbone.state_dict(),
+                        }, file_name)
                 
 
         oldModel = deepcopy(model.encoder)  # save t-1 model

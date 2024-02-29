@@ -209,7 +209,7 @@ def process_batch_ering(x1, x2, x1_old, x2_old, model, cross_loss, oldModel, opt
     
 
 def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime):
-    buffer = Buffer(buffer_size=args.pretrain_batch_size, device=device, n_tasks=len(args.class_split), mode='reservoir')
+    buffer = Buffer(buffer_size=2000, device=device, n_tasks=len(args.class_split), mode='reservoir')
     if args.dataset == 'cifar10':
         cifar_norm = [[0.4914, 0.4822, 0.4465], [0.2470, 0.2435, 0.2615]]
         eval_transform = transforms.Compose([
@@ -267,12 +267,13 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
                 loss2=[]
 
                 for cur_data in loader:
+                    #print('sa')
                     x, x1, x2, _ = cur_data
                     x, x1, x2 = x.to(device), x1.to(device), x2.to(device)
                     if buffer.is_empty():
                         model, optimizer = process_batch(x1, x2, model, cross_loss, optimizer, epoch_loss, args)
                     else:
-                        buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=eval_transform)
+                        buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=transform_prime)#transform=eval_transform
                         buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
                         lam = np.random.beta(0.4, 0.4) #0.4
                         mixed_x = lam * x1 + (1 - lam) * buf_inputs[:x1.shape[0]]

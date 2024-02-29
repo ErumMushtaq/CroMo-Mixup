@@ -104,13 +104,13 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, train
             wandb.log({" Average Mem Loss ": np.mean(epoch_loss_mem), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize,device = device)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)#,device = device)
 
     return model, loss_, optimizer
 
 
 def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
-    memory = torch.Tensor().to(device)
+    memory = torch.Tensor()#.to(device)
     epoch_counter = 0
     for task_id, loader in enumerate(train_data_loaders):
         past_data_loader = train_data_loaders[0]
@@ -150,16 +150,29 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
                     # x = memory[indices].to(device)
                     # xx1, xx2 = transform(x), transform_prime(x)
 
+                    # x1_old = torch.Tensor([]).to(device)
+                    # x2_old = torch.Tensor([]).to(device)
+                    # indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    # for ind in indices:
+                    #     x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
+                    #     x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                    # x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
-                    for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
-                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                    memory_samples = memory[indices].to(device)
+                    for ind in range(len(memory_samples)):
+                        x1_old = torch.cat((x1_old, transform(memory_samples[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory_samples[ind:ind+1])), dim=0)
+                    del memory_samples
 
                     x1 = torch.cat([x1, x1_old], dim=0)
                     x2 = torch.cat([x2, x2_old], dim=0)
+
+                    del x1_old
+                    del x2_old
 
                 z1,z2 = model(x1, x2)
                 z1 = F.normalize(z1, p=2)
@@ -200,7 +213,7 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
             wandb.log({" Average Mem Loss ": np.mean(epoch_loss_mem), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize,device = device)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)#,device = device)
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
@@ -215,7 +228,7 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
 
 def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
     epoch_counter = 0
-    memory = torch.Tensor().to(device)
+    memory = torch.Tensor()#.to(device)
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
         
@@ -243,16 +256,31 @@ def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_
                     # x = memory[indices].to(device)
                     # xx1, xx2 = transform(x), transform_prime(x)
 
+                    # x1_old = torch.Tensor([]).to(device)
+                    # x2_old = torch.Tensor([]).to(device)
+                    # indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    # for ind in indices:
+                    #     x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
+                    #     x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                    # x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+                    # x1 = torch.cat([x1, x1_old], dim=0)
+                    # x2 = torch.cat([x2, x2_old], dim=0)
+
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
-                    for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
-                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                    memory_samples = memory[indices].to(device)
+                    for ind in range(len(memory_samples)):
+                        x1_old = torch.cat((x1_old, transform(memory_samples[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory_samples[ind:ind+1])), dim=0)
+                    del memory_samples
 
                     x1 = torch.cat([x1, x1_old], dim=0)
                     x2 = torch.cat([x2, x2_old], dim=0)
+
+                    del x1_old
+                    del x2_old
 
                 z1,z2 = model(x1, x2)
                 loss =  cross_loss(z1, z2)
@@ -276,7 +304,7 @@ def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize,device = device)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)#,device = device)
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
@@ -321,7 +349,7 @@ def info_nce_loss(features,args,device):
 
 def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_data_loaders_pure, test_data_loaders, device, args, transform, transform_prime):
     epoch_counter = 0
-    memory = torch.Tensor().to(device)
+    memory = torch.Tensor()#.to(device)
     criterion = torch.nn.CrossEntropyLoss().to(device)
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
@@ -348,16 +376,31 @@ def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_
                     # x = memory[indices].to(device)
                     # xx1, xx2 = transform(x), transform_prime(x)
 
+                    # x1_old = torch.Tensor([]).to(device)
+                    # x2_old = torch.Tensor([]).to(device)
+                    # indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    # for ind in indices:
+                    #     x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
+                    #     x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
+                    # x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+
+                    # x1 = torch.cat([x1, x1_old], dim=0)
+                    # x2 = torch.cat([x2, x2_old], dim=0)
+
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
                     indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
-                    for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
-                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                    memory_samples = memory[indices].to(device)
+                    for ind in range(len(memory_samples)):
+                        x1_old = torch.cat((x1_old, transform(memory_samples[ind:ind+1])), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(memory_samples[ind:ind+1])), dim=0)
+                    del memory_samples
 
                     x1 = torch.cat([x1, x1_old], dim=0)
                     x2 = torch.cat([x2, x2_old], dim=0)
+
+                    del x1_old
+                    del x2_old
 
                 z1,z2 = model(x1, x2)
                 features = torch.cat((z1,z2),dim=0)
@@ -384,7 +427,7 @@ def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_
             wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
             wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
 
-        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize, device)
+        memory = update_memory(memory, train_data_loaders_pure[task_id], args.msize)#, device)
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_lambdap_' + str(args.lambdap) + '_lambda_norm_' + str(args.lambda_norm) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
         # save your encoder network
