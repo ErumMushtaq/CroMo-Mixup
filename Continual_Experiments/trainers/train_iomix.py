@@ -816,7 +816,7 @@ def loss_func(p, z):
    # L2 normalization
    p = F.normalize(p, dim=-1, p=2)
    z = F.normalize(z, dim=-1, p=2)
-   return 2 - 2 * (p * z.detach()).sum(dim=1).mean()
+   return 2 - 2 * (p * z).sum(dim=1).mean()
 
    
 def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime, transform2, transform2_prime):
@@ -907,10 +907,13 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
 
                     z1, z2, p1, p2 = model(x1_hat, x2_hat)
                     
+                    # z1old, z2old, p1old, p2old = model(x1_old[:old_task_size], x2_old[:old_task_size])
+                    # z2old = model(x2_old[:old_task_size])
 
                     with torch.no_grad():
                         target_z1 = model.teacher_model(x1[:curr_task_size])
                         target_z2 = model.teacher_model(x2[:curr_task_size])
+
                         z1old = model.teacher_model(x1_old[:old_task_size])
                         z2old = model.teacher_model(x2_old[:old_task_size])
 
@@ -919,12 +922,12 @@ def train_iomix_byol(model, train_data_loaders, knn_train_data_loaders, test_dat
                     loss = 0.5*loss_one + 0.5*loss_two
                     loss = loss.mean()
 
-                    # ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], p1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], p1old))+\
-                    # 0.5*(lam* loss_func(p2[curr_task_size:], p2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], p2old))
+                    ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], p1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], z1old))+\
+                    0.5*(lam* loss_func(p2[curr_task_size:], p2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], z2old))
                    
                     #Question: how to handle teacher prediction for the mixup (1st option), second is get z's of mixed from the teacher and other the current model
-                    ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], target_z1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], z1old[:old_task_size]))+\
-                    0.5*(lam* loss_func(p2[curr_task_size:], target_z2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], z2old[:old_task_size]))
+                    # ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], target_z1[:old_task_size]) + (1-lam)* loss_func(p1[curr_task_size:], z1old[:old_task_size]))+\
+                    # 0.5*(lam* loss_func(p2[curr_task_size:], target_z2[:old_task_size]) + (1-lam)* loss_func(p2[curr_task_size:], z2old[:old_task_size]))
 
                     loss += ood_loss.mean() 
 

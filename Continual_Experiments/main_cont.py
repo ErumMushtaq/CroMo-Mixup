@@ -641,13 +641,21 @@ if __name__ == "__main__":
     lin_epoch = 200
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        if 'byol' in args.appr:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        else:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+
+        # lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
         # in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
         # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     elif args.dataset == 'cifar100':
         classifier = LinearClassifier(num_classes = 100).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        if 'byol' in args.appr:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        else:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
     elif args.dataset == 'tinyImagenet':
         classifier = LinearClassifier(features_dim=2048, num_classes = 200).to(device)

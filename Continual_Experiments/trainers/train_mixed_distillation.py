@@ -185,7 +185,7 @@ def process_batch_mixed_distillation_contrast(x1, x2, x1_old, x2_old, model, cro
         old_task_size = curr_task_size
     else:
         old_task_size = args.replay_bs
-    lam = np.random.beta(args.alpha, args.alpha)
+    lam =  0.7   #np.random.beta(args.alpha, args.alpha)
     mix_x1 = lam * x1[:old_task_size] + (1 - lam) * x1_old[:old_task_size]
     mix_x2 = lam * x2[:old_task_size] + (1 - lam) * x2_old[:old_task_size]
 
