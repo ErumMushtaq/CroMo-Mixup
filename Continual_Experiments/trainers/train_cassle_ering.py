@@ -765,8 +765,8 @@ def train_cassle_ering_byol(model, train_data_loaders, knn_train_data_loaders, t
                     x_old_bs = x_old[indices]
                     # print(x_old.shape)
                     for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
+                        x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
+                        x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
                     x1_old, x2_old = x1_old.to(device), x2_old.to(device)
 
                     curr_task_size = x2.shape[0]
