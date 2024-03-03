@@ -277,13 +277,11 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
                     if buffer.is_empty():
                         model, optimizer = process_batch(x1, x2, model, cross_loss, optimizer, epoch_loss, args)
                     else:
-<<<<<<< HEAD
                         buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=transform_prime)#transform=eval_transform
                         buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
                         lam = np.random.beta(0.4, 0.4) #0.4
                         mixed_x = lam * x1 + (1 - lam) * buf_inputs[:x1.shape[0]]
                         mixed_x_aug = lam * x2+ (1 - lam) * buf_inputs1[:x1.shape[0]]
-=======
                         # buf_inputs, buf_inputs1 = buffer.get_data(args.pretrain_batch_size, transform=transform_prime)
                         # buf_inputs, buf_inputs1 = buf_inputs.to(device), buf_inputs1.to(device)
                         # lam = np.random.beta(0.4, 0.4) #0.4
@@ -314,7 +312,6 @@ def train_lump_barlow(model, train_data_loaders, knn_train_data_loaders, test_da
 
                         mixed_x = torch.cat([x1, mix_x1], dim =0)
                         mixed_x_aug = torch.cat([x2, mix_x2], dim =0)        
->>>>>>> aa59bb4c1840d36d68c43d5f54c0233cd788059b
                         model, optimizer = process_batch(mixed_x, mixed_x_aug , model, cross_loss, optimizer, epoch_loss, args)
                     # buffer.add_data(examples=x, logits=x2)
 
