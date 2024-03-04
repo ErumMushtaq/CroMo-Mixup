@@ -684,11 +684,16 @@ def collect_params(model, exclude_bias_and_bn=True):
         param_list.append(param_dict)
     return param_list
 
-def loss_func(x, y):
+def loss_func(p, z):
    # L2 normalization
-   x = F.normalize(x, dim=-1, p=2)
-   y = F.normalize(y, dim=-1, p=2)
-   return 2 - 2 * (x * y).sum(dim=-1)
+   p = F.normalize(p, dim=-1, p=2)
+   z = F.normalize(z, dim=-1, p=2)
+   return 2 - 2 * (p * z.detach()).sum(dim=1).mean()
+# def loss_func(x, y):
+#    # L2 normalization
+#    x = F.normalize(x, dim=-1, p=2)
+#    y = F.normalize(y, dim=-1, p=2)
+#    return 2 - 2 * (x * y).sum(dim=-1)
 
 def train_cassle_ering_byol(model, train_data_loaders, knn_train_data_loaders, test_data_loaders, train_data_loaders_linear, device, args, transform, transform_prime):
     epoch_counter = 0
@@ -706,6 +711,8 @@ def train_cassle_ering_byol(model, train_data_loaders, knn_train_data_loaders, t
         model.temporal_projector = nn.Identity().to(device)
 
     old_model = None
+    model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*sum(args.epochs))
+    step_number = 0
     x_old = torch.Tensor([]).to(device)
     features_old = torch.Tensor([]).to(device)
     y_old = torch.tensor([],dtype=torch.long).to(device)
@@ -718,106 +725,121 @@ def train_cassle_ering_byol(model, train_data_loaders, knn_train_data_loaders, t
             init_lr = init_lr / 10
 
         optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
-        scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
-        model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
+        # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
+        # model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id])
         loss_ = []
-        step_number = 0
-        
-        for epoch in range(args.epochs[task_id]):
-            start = time.time()
-            model.train()
-            epoch_loss = []
-            if task_id == 0:
-                for x1, x2, y in loader:
-                    x1, x2 = x1.to(device), x2.to(device)
-                    z1, z2, p1, p2 = model(x1, x2)
+        # step_number = 0
 
-                    with torch.no_grad():
-                        target_z1 = model.teacher_model(x1)
-                        target_z2 = model.teacher_model(x2)
-
-                    loss_one = loss_func(p1, target_z2.detach())
-                    loss_two = loss_func(p2, target_z1.detach())
-                    loss = 0.5*loss_one + 0.5*loss_two
-                    loss = loss.mean()
-                    epoch_loss.append(loss.item())
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    step_number += 1 
-                    model.update_moving_average(step_number)
+        if task_id == 0 and args.start_chkpt == 1:
+            if args.dataset == "cifar100" and len(args.class_split) == 5:
+                model_path = "./checkpoints/checkpoint_cifar100-algobyol_cassle_ering-e[750, 750, 750, 750, 750]-b256-lr1.0-CS[20, 20, 20, 20, 20]_task_0_same_lr_False_norm_group_ws_True.pth.tar"
+            elif args.dataset == "cifar100" and len(args.class_split) == 10:
+                model_path = "./checkpoints/checkpoint_cifar100-algobyol_cassle_ering-e[600, 350, 350, 350, 350, 350, 350, 350, 350, 350]-b256-lr1.0-CS[10, 10, 10, 10, 10, 10, 10, 10, 10, 10]_task_0_same_lr_False_norm_group_ws_True.pth.tar"
+            elif args.dataset == "cifar10" and len(args.class_split) == 2:
+                model_path = "./checkpoints/checkpoint_cifar10-algobyol_cassle_ering-e[500, 500]-b256-lr1.0-CS[5, 5]_task_0_same_lr_False_norm_group_ws_True.pth.tar"
+            if args.temp_proj == 'identity':
+                model.load_state_dict(torch.load(model_path)['state_dict'], strict = False)
             else:
-                for cur_data in loader:
-                    x1, x2, _ = cur_data
-                    x1, x2 = x1.to(device), x2.to(device)
-                    x1_old = torch.Tensor([]).to(device)
-                    x2_old = torch.Tensor([]).to(device)
-                    f2_old = torch.Tensor([]).to(device)
-                    replay_batchsize = args.replay_bs
-                    indices = np.random.randint(0,x_old.shape[0], replay_batchsize)
-                    x_old_bs = x_old[indices]
-                    # print(x_old.shape)
-                    for ind in indices:
-                        x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1])), dim=0)
-                        x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1])), dim=0)
-                    x1_old, x2_old = x1_old.to(device), x2_old.to(device)
+                model.load_state_dict(torch.load(model_path)['state_dict'])
+            model.task_id = task_id
+            epoch_counter = args.epochs[task_id]
+        else:
+            for epoch in range(args.epochs[task_id]):
+                start = time.time()
+                model.train()
+                epoch_loss = []
+                if task_id == 0:
+                    for x1, x2, y in loader:
+                        x1, x2 = x1.to(device), x2.to(device)
+                        z1, z2, p1, p2 = model(x1, x2)
 
-                    curr_task_size = x2.shape[0]
-                    if curr_task_size < args.replay_bs:
-                        old_task_size = curr_task_size
-                    else:
-                        old_task_size = args.replay_bs
-                    x1_hat = torch.cat((x1, x1_old))
-                    x2_hat = torch.cat((x2, x2_old))
+                        with torch.no_grad():
+                            target_z1 = model.teacher_model(x1)
+                            target_z2 = model.teacher_model(x2)
 
-                    z1, z2, p1, p2 = model(x1_hat, x2_hat)
+                        loss_one = loss_func(p1, target_z2.detach())
+                        loss_two = loss_func(p2, target_z1.detach())
+                        loss = 0.5*loss_one + 0.5*loss_two
+                        loss = loss.mean()
+                        epoch_loss.append(loss.item())
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        step_number += 1 
+                        model.update_moving_average(step_number)
+                else:
+                    for cur_data in loader:
+                        x1, x2, _ = cur_data
+                        x1, x2 = x1.to(device), x2.to(device)
+                        x1_old = torch.Tensor([]).to(device)
+                        x2_old = torch.Tensor([]).to(device)
+                        f2_old = torch.Tensor([]).to(device)
+                        replay_batchsize = args.replay_bs
+                        indices = np.random.randint(0,x_old.shape[0], replay_batchsize)
+                        x_old_bs = x_old[indices]
+                        # print(x_old.shape)
+                        for ind in indices:
+                            x1_old = torch.cat((x1_old, transform(x_old[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
+                            x2_old = torch.cat((x2_old, transform_prime(x_old[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
+                        x1_old, x2_old = x1_old.to(device), x2_old.to(device)
 
-                    with torch.no_grad():
-                        target_z1 = model.teacher_model(x1_hat)
-                        target_z2 = model.teacher_model(x2_hat)
+                        curr_task_size = x2.shape[0]
+                        if curr_task_size < args.replay_bs:
+                            old_task_size = curr_task_size
+                        else:
+                            old_task_size = args.replay_bs
+                        x1_hat = torch.cat((x1, x1_old))
+                        x2_hat = torch.cat((x2, x2_old))
 
-                    loss_one = loss_func(p1, target_z2.detach())
-                    loss_two = loss_func(p2, target_z1.detach())
-                    loss = 0.5*loss_one + 0.5*loss_two
-                    loss = loss.mean()
+                        z1, z2, p1, p2 = model(x1_hat, x2_hat)
 
-                    f1Old = oldModel(x1_hat).squeeze().detach()
-                    f2Old = oldModel(x2_hat).squeeze().detach()
-                    p2_1 = model.temporal_projector(p1)
-                    p2_2 = model.temporal_projector(p2)
-              
-                    lossKD = args.lambdap * (loss_func(p2_1, f1Old) * 0.5
-                                        + loss_func(p2_2, f2Old)  * 0.5) 
-                    loss += lossKD.mean()
+                        with torch.no_grad():
+                            target_z1 = model.teacher_model(x1_hat)
+                            target_z2 = model.teacher_model(x2_hat)
 
-                    epoch_loss.append(loss.item())
-                    optimizer.zero_grad()
-                    loss.backward()
-                    optimizer.step()
-                    step_number += 1 
-                    model.update_moving_average(step_number)
-                # ema_model = ema.update_model_average(ema_model, model)
+                        loss_one = loss_func(p1, target_z2.detach())
+                        loss_two = loss_func(p2, target_z1.detach())
+                        loss = 0.5*loss_one + 0.5*loss_two
+                        loss = loss.mean()
 
-            if args.is_debug:
-                break
+                        f1Old = oldModel(x1_hat).squeeze().detach()
+                        f2Old = oldModel(x2_hat).squeeze().detach()
+                        p2_1 = model.temporal_projector(z1)
+                        p2_2 = model.temporal_projector(z2)
+                
+                        lossKD = args.lambdap * (loss_func(p2_1, f2Old) * 0.5
+                                            + loss_func(p2_2, f1Old)  * 0.5) 
+                        loss += lossKD.mean()
 
-            scheduler.step()
-            epoch_counter += 1
-            loss_.append(np.mean(epoch_loss))
-            end = time.time()
-            print('epoch end')
-            if (epoch+1) % args.knn_report_freq == 0:
-                knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
-                wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
-                for i, acc in enumerate(task_acc_arr):
-                    wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
-                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
-                print(task_acc_arr)
-            else:
-                print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
-        
-            wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
-            wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
+                        epoch_loss.append(loss.item())
+                        optimizer.zero_grad()
+                        loss.backward()
+                        optimizer.step()
+                        step_number += 1 
+                        model.update_moving_average(step_number)
+                    # ema_model = ema.update_model_average(ema_model, model)
+
+                if args.is_debug:
+                    break
+
+                scheduler.step()
+                epoch_counter += 1
+                loss_.append(np.mean(epoch_loss))
+                end = time.time()
+                print('epoch end')
+                if (epoch+1) % args.knn_report_freq == 0:
+                    knn_acc, task_acc_arr = Knn_Validation_cont(model, knn_train_data_loaders[:task_id+1], test_data_loaders[:task_id+1], device=device, K=200, sigma=0.5) 
+                    wandb.log({" Global Knn Accuracy ": knn_acc, " Epoch ": epoch_counter})
+                    for i, acc in enumerate(task_acc_arr):
+                        wandb.log({" Knn Accuracy Task-"+str(i): acc, " Epoch ": epoch_counter})
+                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f}  | Knn:  {knn_acc*100:.2f}')
+                    print(task_acc_arr)
+                else:
+                    print(f'Task {task_id:2d} | Epoch {epoch:3d} | Time:  {end-start:.1f}s  | Loss: {np.mean(epoch_loss):.4f} ')
+            
+                wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
+                wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
             
         file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
