@@ -810,8 +810,8 @@ def train_cassle_ering_byol(model, train_data_loaders, knn_train_data_loaders, t
                         p2_1 = model.temporal_projector(z1)
                         p2_2 = model.temporal_projector(z2)
                 
-                        lossKD = args.lambdap * (loss_func(p2_1, f2Old) * 0.5
-                                            + loss_func(p2_2, f1Old)  * 0.5) 
+                        lossKD = args.lambdap * (loss_func(p2_1, f1Old) * 0.5
+                                            + loss_func(p2_2, f2Old)  * 0.5) 
                         loss += lossKD.mean()
 
                         epoch_loss.append(loss.item())

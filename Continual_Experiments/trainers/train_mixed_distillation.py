@@ -867,8 +867,8 @@ def train_mixed_distillation_byol(model, train_data_loaders, knn_train_data_load
                         p2_1 = model.temporal_projector(z1)
                         p2_2 = model.temporal_projector(z2)
                 
-                        lossKD = args.lambdap * (loss_func(p2_1, f2Old) * 0.5
-                                            + loss_func(p2_2, f1Old)  * 0.5) 
+                        lossKD = args.lambdap * (loss_func(p2_1[:curr_task_size], f1Old[:curr_task_size]) * 0.5
+                                            + loss_func(p2_2[:curr_task_size], f2Old[:curr_task_size])  * 0.5) 
                         loss += lossKD.mean()
 
                         ood_loss = 0.5*(lam* loss_func(p1[curr_task_size:], target_z1[:old_task_size].detach()) + (1-lam)* loss_func(p1[curr_task_size:], f1Old[curr_task_size:]))+\
