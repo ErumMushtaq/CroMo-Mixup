@@ -62,7 +62,7 @@ def train_ering_simsiam(model, train_data_loaders, knn_train_data_loaders, train
 
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
-                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    indices = np.random.choice(len(memory), size=min(args.replay_bs, len(memory)), replace=False)
                     for ind in indices:
                         x1_old = torch.cat((x1_old, transform(memory[ind:ind+1])), dim=0)
                         x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1])), dim=0)
@@ -161,7 +161,7 @@ def train_ering_infomax(model, train_data_loaders, knn_train_data_loaders, train
 
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
-                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    indices = np.random.choice(len(memory), size=min(args.replay_bs, len(memory)), replace=False)
                     memory_samples = memory[indices].to(device)
                     for ind in range(len(memory_samples)):
                         x1_old = torch.cat((x1_old, transform(memory_samples[ind:ind+1])), dim=0)
@@ -269,7 +269,7 @@ def train_ering_barlow(model, train_data_loaders, knn_train_data_loaders, train_
 
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
-                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    indices = np.random.choice(len(memory), size=min(args.replay_bs, len(memory)), replace=False)
                     memory_samples = memory[indices].to(device)
                     for ind in range(len(memory_samples)):
                         x1_old = torch.cat((x1_old, transform(memory_samples[ind:ind+1])), dim=0)
@@ -389,7 +389,7 @@ def train_ering_simclr(model, train_data_loaders, knn_train_data_loaders, train_
 
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
-                    indices = np.random.choice(len(memory), size=min(32*task_id, len(memory)), replace=False)
+                    indices = np.random.choice(len(memory), size=min(args.replay_bs, len(memory)), replace=False)
                     memory_samples = memory[indices].to(device)
                     for ind in range(len(memory_samples)):
                         x1_old = torch.cat((x1_old, transform(memory_samples[ind:ind+1])), dim=0)
@@ -504,7 +504,7 @@ def train_ering_byol(model, train_data_loaders, knn_train_data_loaders, train_da
                 if task_id > 0:                    
                     x1_old = torch.Tensor([]).to(device)
                     x2_old = torch.Tensor([]).to(device)
-                    indices = np.random.choice(len(memory), size=min(args.bsize, len(memory)), replace=False)
+                    indices = np.random.choice(len(memory), size=min(args.replay_bs, len(memory)), replace=False)
                     for ind in indices:
                         x1_old = torch.cat((x1_old, transform(memory[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)
                         x2_old = torch.cat((x2_old, transform_prime(memory[ind:ind+1].squeeze()).unsqueeze(0).to(device)), dim=0)

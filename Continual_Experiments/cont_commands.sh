@@ -133,8 +133,15 @@ python3 main_cont.py -cs 10 -e 1000 --dataset cifar10  --proj_out 128 --proj_hid
 
 #cifar100 simclr_ering
 python3 main_cont.py -cs 20,20,20,20,20 -e 750,750,750,750,750 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 6 --pretrain_batch_size 512 --appr ering_simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --msize 500
-
 python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --proj_out 128 --proj_hidden 2048 --cuda_device 7 --pretrain_batch_size 512 --appr ering_simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --msize 100
+
+
+#cifar10 simclr
+python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --proj_out 128 --proj_hidden 2048 --cuda_device 0 --pretrain_batch_size 512 --appr ering_simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --msize 500 --same_lr
+python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --proj_out 128 --proj_hidden 2048 --cuda_device 2 --pretrain_batch_size 512 --appr cassle_simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --same_lr
+python3 main_cont.py -cs 5,5 -e 500,500 --dataset cifar10 --proj_out 128 --proj_hidden 2048 --cuda_device 5 --pretrain_batch_size 512 --appr basic_simclr --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --same_lr
+
+
 
 #Hp search LRD+Replay
 python3 main_cont.py -cs 5,5 --dataset cifar10  -e 500,500 --lambdap 100.0 --lambda_norm 10.0 --subspace_rate 0.95  --proj_out 64 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --normalization group --weight_standard --cuda_device 0 --appr LRD_infomax --pretrain_base_lr 0.5 --pretrain_weight_decay 1e-4 --msize 300
@@ -411,17 +418,18 @@ python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,35
 #cassle barlow
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 7 --appr 'cassle_barlow' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10  --pretrain_weight_decay 1e-4 --same_lr
 #cassle simclr
-python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 6 --appr 'cassle_simclr' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --same_lr  --temperature 0.5
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 4 --appr 'cassle_simclr' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --same_lr  --temperature 0.5
 #cassle byol
-python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --cuda_device 2 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256 --appr 'cassle_byol'  --normalization group --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6  --same_lr
-python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --cuda_device 5 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256 --appr 'cassle_byol'  --normalization group --weight_standard --pretrain_base_lr 0.1 --min_lr 1e-6  --same_lr
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --cuda_device 0 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256 --appr 'cassle_byol'  --normalization group --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6  --same_lr
 
 #ering barlow
-python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 3 --appr 'ering_barlow' --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10  --pretrain_weight_decay 1e-4 --msize 500 --bsize 64
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 3 --appr 'ering_barlow' --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10  --pretrain_weight_decay 1e-4 --msize 100 --replay_bs 64
 #ering infomax
-python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 7 --appr 'ering_infomax' --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10  --sim_loss_weight 500.0 --pretrain_weight_decay 1e-4 --la_R 0.1 --la_mu 0.1 --msize 500 --bsize 256 --same_lr
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 3 --appr 'ering_infomax' --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10  --sim_loss_weight 500.0 --pretrain_weight_decay 1e-4 --la_R 0.1 --la_mu 0.1 --msize 100 --replay_bs 64 --same_lr
 #ering simclr
-python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 6 --appr 'ering_simclr' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --same_lr  --temperature 0.5 --msize 500 --bsize 256 
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 6 --appr 'ering_simclr' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --same_lr  --temperature 0.5 --msize 100 --replay_bs 64 
+#ering byol
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization group --cuda_device 0 --appr 'ering_byol'   --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256  --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6  --same_lr  --msize 100 --replay_bs 64
 
 #iomix barlow
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 2 --appr 'barlow_iomix' --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --pretrain_weight_decay 1e-4  --same_lr --msize 100 --replay_bs 64 --knn_report_freq 50 --num_workers 8
@@ -429,6 +437,8 @@ python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,35
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 0 --appr 'infomax_iomix' --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --sim_loss_weight 500.0   --pretrain_weight_decay 1e-4 --la_R 0.1 --la_mu 0.1  --msize 100  --same_lr --scale_loss 0.1 --replay_bs 64 --knn_report_freq 50 --num_workers 8 
 #iomix simclr
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 3 --appr 'simclr_iomix' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --temperature 0.5 --msize 100 --replay_bs 64 --knn_report_freq 50 --same_lr
+#iomix byol
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization group --cuda_device 2 --appr 'byol_iomix'   --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256  --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6  --same_lr  --msize 100 --replay_bs 64
 
 #cassle ering barlow
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 0 --appr 'cassle_ering_barlow' --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --pretrain_weight_decay 1e-4  --same_lr  --msize 100 --replay_bs 64 --knn_report_freq 50 --num_workers 8
@@ -436,6 +446,8 @@ python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,35
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 7 --appr 'infomax_cassle_ering' --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --sim_loss_weight 500.0   --pretrain_weight_decay 1e-4 --la_R 0.1 --la_mu 0.1  --msize 100  --same_lr --scale_loss 0.1 --replay_bs 64 --knn_report_freq 50 --num_workers 8 
 #cassle ering simclr
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 2 --appr 'simclr_cassle_ering' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --temperature 0.5 --msize 100 --replay_bs 64 --knn_report_freq 50 --same_lr
+#cassle ering byol
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization group --cuda_device 4 --appr 'byol_cassle_ering'   --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256  --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6  --same_lr  --msize 100 --replay_bs 64
 
 
 #mixed distillation barlow
@@ -444,6 +456,10 @@ python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,35
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 4 --appr 'infomax_mixed_distillation' --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --sim_loss_weight 500.0   --pretrain_weight_decay 1e-4 --la_R 0.1 --la_mu 0.1  --msize 100  --same_lr --scale_loss 0.1 --replay_bs 64 --knn_report_freq 50 --num_workers 8 
 #mixed distillatio simclr
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --normalization batch --cuda_device 5 --appr 'simclr_mixed_distillation' --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --temperature 0.5 --msize 100 --replay_bs 64 --knn_report_freq 50 --same_lr
+#mixed distillatio byol
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --cuda_device 5 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256 --appr 'byol_mixed_distillation'  --normalization group --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6  --same_lr
+python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096  --pred_out 4096 --cuda_device 6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256 --appr 'byol_mixed_distillation'  --normalization group --weight_standard --pretrain_base_lr 0.1 --min_lr 1e-6  --same_lr
+
 
 
 
