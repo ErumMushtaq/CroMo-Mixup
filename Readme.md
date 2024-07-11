@@ -33,16 +33,13 @@ python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 600,350,350,350,350,35
 python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --appr byol_mixed_distillation --sim_loss_weight 1000.0 --proj_out 256 --proj_hidden 4096 --pred_hidden 4096 --pred_out 256 --min_lr 1e-3 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-5 --cuda_device 7 --pretrain_base_lr 1.0 --pretrain_weight_decay 1e-5  --knn_report_freq 25 --pretrain_batch_size 256 --normalization group --weight_standard --msize 100 --bsize 64 --start_chkpt 1
 python3 main_cont.py -cs 10,10,10,10,10,10,10,10,10,10 -e 600,350,350,350,350,350,350,350,350,350 --dataset cifar100 --appr simclr_mixed_distillation --proj_out 128 --proj_hidden 2048 --cuda_device 5 --pretrain_batch_size 512  --pretrain_base_lr 0.6 --min_lr 1e-3 --temperature 0.5 --msize 25 --replay_bs 64 --knn_report_freq 25
 ```
-### Tny-ImageNet:
+### Tiny-ImageNet:
 The following are the  commands to run CroMo-Mixup with Barlow Twins, CorInfomax, BYOL, and SimCLR on 10 task setting.
 
 ```
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --appr barlow_mixed_distillation --normalization batch --cuda_device 3  --lambda_param 5e-3 --scale_loss 0.1 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --pretrain_weight_decay 1e-4 --same_lr --msize 100 --replay_bs 64 --knn_report_freq 50 --num_workers 8
-
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --appr infomax_mixed_distillation --normalization batch --cuda_device 4  --proj_out 128 --proj_hidden 4096 --min_lr 1e-6 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_batch_size 256 --pretrain_base_lr 0.10 --sim_loss_weight 500.0 --pretrain_weight_decay 1e-4 --la_R 0.1 --la_mu 0.1 --msize 100 --same_lr --scale_loss 0.1 --replay_bs 64 --knn_report_freq 50 --num_workers 8
-
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet --appr byol_mixed_distillation --proj_out 4096 --proj_hidden 4096 --pred_hidden 4096 --pred_out 4096 --cuda_device 7 --pretrain_warmup_epochs 10 --pretrain_warmup_lr 3e-3 --pretrain_weight_decay 1e-6 --pretrain_batch_size 256  --normalization group --weight_standard --pretrain_base_lr 0.3 --min_lr 1e-6 --same_lr --lambdap 0.0
-
 python3 main_cont.py -cs 20,20,20,20,20,20,20,20,20,20 -e 500,350,350,350,350,350,350,350,350,350 --dataset tinyImagenet  --appr simclr_mixed_distillation--normalization batch --cuda_device 5 --proj_out 2048 --proj_hidden 2048 --min_lr 1e-6 --pretrain_batch_size 256 --pretrain_base_lr 0.3 --temperature 0.5 --msize 100 --replay_bs 64 --knn_report_freq 50 --same_lr
 
 ```
