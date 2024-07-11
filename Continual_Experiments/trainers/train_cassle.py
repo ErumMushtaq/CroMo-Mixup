@@ -467,14 +467,14 @@ def train_cassle_barlow(model, train_data_loaders, knn_train_data_loaders, test_
             
                 wandb.log({" Average Training Loss ": np.mean(epoch_loss), " Epoch ": epoch_counter})  
                 wandb.log({" lr ": optimizer.param_groups[0]['lr'], " Epoch ": epoch_counter})
-                file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
+            file_name = './checkpoints/checkpoint_' + str(args.dataset) + '-algo' + str(args.appr) + "-e" + str(args.epochs) + "-b" + str(args.pretrain_batch_size) + "-lr" + str(args.pretrain_base_lr) + "-CS" + str(args.class_split) + '_task_' + str(task_id) + '_same_lr_' + str(args.same_lr) + '_norm_' + str(args.normalization) + '_ws_' + str(args.weight_standard) + '.pth.tar'
 
-                # save your encoder network
-                torch.save({
-                                'state_dict': model.state_dict(),
-                                'optimizer' : optimizer.state_dict(),
-                                'encoder': model.encoder.backbone.state_dict(),
-                            }, file_name)
+            # save your encoder network
+            torch.save({
+                            'state_dict': model.state_dict(),
+                            'optimizer' : optimizer.state_dict(),
+                            'encoder': model.encoder.backbone.state_dict(),
+                        }, file_name)
                 
 
         oldModel = deepcopy(model.encoder)  # save t-1 model
@@ -684,23 +684,24 @@ def train_cassle_byol(model, train_data_loaders, knn_train_data_loaders, test_da
         model.temporal_projector = nn.Identity().to(device)
 
     old_model = None
-    model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*sum(args.epochs))
-    step_number = 0
+    # model.initialize_EMA(0.99, 1.0, len(train_data_loaders[0])*sum(args.epochs))
+    # step_number = 0
     
 
     for task_id, loader in enumerate(train_data_loaders):
         # Optimizer and Scheduler
         model.task_id = task_id
         init_lr = args.pretrain_base_lr*args.pretrain_batch_size/256
-        model_parameters = collect_params(model)
+        # model_parameters = collect_params(model)
         if task_id != 0 and args.same_lr != True:
             init_lr = init_lr / 10
 
-        optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
+        optimizer = LARS(model.parameters(),lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
+        # optimizer = LARS(model_parameters,lr=init_lr, momentum=args.pretrain_momentum, weight_decay= args.pretrain_weight_decay, eta=0.02, clip_lr=True, exclude_bias_n_norm=True)      
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, args.epochs[task_id])
-        # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
-        # model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
-        # step_number = 0
+        # # scheduler = LinearWarmupCosineAnnealingLR(optimizer, warmup_epochs=args.pretrain_warmup_epochs , max_epochs=args.epochs[task_id],warmup_start_lr=args.min_lr,eta_min=args.min_lr) 
+        model.initialize_EMA(0.99, 1.0, len(loader)*args.epochs[task_id])
+        step_number = 0
         loss_ = []
 
         if task_id == 0 and args.start_chkpt == 1:
@@ -747,8 +748,8 @@ def train_cassle_byol(model, train_data_loaders, knn_train_data_loaders, test_da
                         p2_1 = model.temporal_projector(z1)
                         p2_2 = model.temporal_projector(z2)
                 
-                        lossKD = args.lambdap * (loss_func(p2_1, f2Old) * 0.5
-                                            + loss_func(p2_2, f1Old)  * 0.5) 
+                        lossKD = args.lambdap * (loss_func(p2_1, f1Old) * 0.5
+                                            + loss_func(p2_2, f2Old)  * 0.5) 
                         loss += lossKD.mean()
 
                     epoch_loss.append(loss.item())
@@ -799,7 +800,7 @@ def train_cassle_byol(model, train_data_loaders, knn_train_data_loaders, test_da
         # if task_id < len(train_data_loaders)-1:
         #     lin_epoch = 1
         #     num_class = np.sum(args.class_split[:task_id+1])
-        #     classifier = LinearClassifier(num_classes = num_class).to(device)
+        #     classifier = LinearClassifier(features_dim=model.encoder.backbone.output_dim, num_classes = num_class).to(device)
         #     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         #     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
         #     linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  

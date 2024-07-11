@@ -150,8 +150,7 @@ def add_args(parser):
     # Infomax Args
     parser.add_argument('--cov_loss_weight', type=float, default=1.0)
     parser.add_argument('--sim_loss_weight', type=float, default=250.0)
-    parser.add_argument('--info_loss', type=str, default='invariance',
-                        help='infomax loss')
+    parser.add_argument('--info_loss', type=str, default='invariance',help='infomax loss')
     parser.add_argument('--R_eps_weight', type=float, default=1e-8)
     parser.add_argument('--la_mu', type=float, default=0.1)
     parser.add_argument('--la_R', type=float, default=0.1)
@@ -641,13 +640,21 @@ if __name__ == "__main__":
     lin_epoch = 200
     if args.dataset == 'cifar10':
         classifier = LinearClassifier(num_classes = 10).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        if 'byol' in args.appr:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        else:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+
+        # lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
         # in_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9) # Infomax: no weight decay, epoch 100, cosine scheduler
         # lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=2e-4) #scheduler + values ref: infomax paper
     elif args.dataset == 'cifar100':
         classifier = LinearClassifier(num_classes = 100).to(device)
-        lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        if 'byol' in args.appr:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.1, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
+        else:
+            lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
         lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
     elif args.dataset == 'tinyImagenet':
         classifier = LinearClassifier(features_dim=2048, num_classes = 200).to(device)
