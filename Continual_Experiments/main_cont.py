@@ -64,7 +64,7 @@ from trainers.train_cassle_cosine_linear import train_cassle_cosine_linear_barlo
 from trainers.train_cosine_ering import train_cosine_ering_barlow
 from trainers.train_GPM import train_gpm_barlow
 from trainers.train_GPM_cosine import train_gpm_cosine_barlow
-from trainers.train_ddpm import train_diffusion
+# from trainers.train_ddpm import train_diffusion
 from trainers.train_cddpm import train_barlow_diffusion
 from trainers.train_lump import train_lump_barlow
 from trainers.train_iomix import train_infomax_iomix, train_cassle_barlow_iomixup, train_simclr_iomix, train_iomix_byol, train_cassle_barlow_mixup
@@ -507,10 +507,10 @@ if __name__ == "__main__":
     if args.appr == 'barlow_diffusion' or args.appr == 'basic_dino':
         print(args.appr)
         model, loss, optimizer = train_barlow_diffusion(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args, diffusion_model, noise_scheduler, train_data_loaders_diffusion, test_data_loaders_diffusion, transform, transform_prime, diffusion_tr, transform_knn )
-    elif args.appr == 'diffusion':
-        trainer = train_diffusion(model, noise_scheduler, train_data_loaders[0], test_data_loaders[0], device,args,train_batch_size = batch_size,train_lr = args.pretrain_base_lr, train_epochs = args.epochs, gradient_accumulate_every = 2, ema_decay = 0.995, amp = True, calculate_fid = True)
-        trainer.train()
-        exit()
+    # elif args.appr == 'diffusion':
+    #     trainer = train_diffusion(model, noise_scheduler, train_data_loaders[0], test_data_loaders[0], device,args,train_batch_size = batch_size,train_lr = args.pretrain_base_lr, train_epochs = args.epochs, gradient_accumulate_every = 2, ema_decay = 0.995, amp = True, calculate_fid = True)
+    #     trainer.train()
+    #     exit()
     elif args.appr == 'basic_simsiam': #baseline setup
         model, loss, optimizer = train_simsiam(model, train_data_loaders, train_data_loaders_knn, test_data_loaders, train_data_loaders_linear, device, args)
     elif args.appr == 'basic_infomax': #baseline setup
