@@ -513,15 +513,6 @@ def train_cassle_infomax_mixed_distillation(model, train_data_loaders, knn_train
                        'encoder': model.encoder.backbone.state_dict(),
                    }, file_name)
         
-<<<<<<< HEAD
-        # if task_id < len(train_data_loaders)-1:
-        #     lin_epoch = 1
-        #     num_class = np.sum(args.class_split[:task_id+1])
-        #     classifier = LinearClassifier(num_classes = num_class).to(device)
-        #     lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
-        #     lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
-        #     linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
-=======
         if task_id < len(train_data_loaders)-1:
             lin_epoch = 1
             num_class = np.sum(args.class_split[:task_id+1])
@@ -529,7 +520,6 @@ def train_cassle_infomax_mixed_distillation(model, train_data_loaders, knn_train
             lin_optimizer = torch.optim.SGD(classifier.parameters(), 0.2, momentum=0.9, weight_decay=0) # Infomax: no weight decay, epoch 100, cosine scheduler
             lin_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(lin_optimizer, lin_epoch, eta_min=0.002) #scheduler + values ref: infomax paper
             linear_evaluation(model, train_data_loaders_linear[:task_id+1], test_data_loaders[:task_id+1], lin_optimizer,classifier, lin_scheduler, lin_epoch, device, task_id)  
->>>>>>> dc40703e2f4225e2969d32370d5f1f4abbe3c02a
 
         x_samp, y_samp = store_samples(loader, task_id, args.msize)
         x_samp, y_samp = x_samp.to(device), y_samp.to(device)
