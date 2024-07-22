@@ -65,3 +65,4 @@ DIL Experiments
 ```
 python3 main.py -cs 10,10,10,10,10,10,10,10,10,10 --epochs 200 --dataset cifar100 --min_lr 1e-6 --pretrain_warmup_epochs 0 --pretrain_warmup_lr 3e-3 --pretrain_base_lr 0.075 --pretrain_weight_decay 5e-4 --normalization group --cuda_device 6 --pretrain_batch_size 128 --algo supervised --weight_standard -vcs 10,10,10,10,10,10,10,10,10,10 --knn_report_freq 10 --sup_type type2  -dl_type data_incremental
 ```
+Note: for supervised learning, you might need to use the respective test trasform from the cfar100 dataloader if interested in evaluating the test accuracy.

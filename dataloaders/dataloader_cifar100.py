@@ -71,21 +71,21 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
                         transforms.CenterCrop(random_crop_size),
                         transforms.Normalize(data_normalize_mean, data_normalize_std),
                     ] )
-                #for supervised learning results
-                transform_linear = transforms.Compose([
-                    #transforms.ToPILImage(),
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(15),
-                    # transforms.ToTensor(),
-                    transforms.Normalize(data_normalize_mean, data_normalize_std)
-                ])
+                # #for supervised learning results
+                # transform_linear = transforms.Compose([
+                #     #transforms.ToPILImage(),
+                #     transforms.RandomCrop(32, padding=4),
+                #     transforms.RandomHorizontalFlip(),
+                #     transforms.RandomRotation(15),
+                #     # transforms.ToTensor(),
+                #     transforms.Normalize(data_normalize_mean, data_normalize_std)
+                # ])
 
-                # transform_linear = transforms.Compose( [
-                #         transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
-                #         transforms.RandomHorizontalFlip(),
-                #         transforms.Normalize(data_normalize_mean, data_normalize_std),
-                #     ] )
+                transform_linear = transforms.Compose( [
+                        transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                        transforms.RandomHorizontalFlip(),
+                        transforms.Normalize(data_normalize_mean, data_normalize_std),
+                    ] )
             else:
                 transform_test = valid_transform
                 transform_linear = valid_transform
@@ -150,21 +150,21 @@ def get_cifar100(transform, transform_prime, classes=[50,50], valid_rate = 0.05,
                         transforms.Normalize(data_normalize_mean, data_normalize_std),
                     ] )
 
-                # #for supervised learning results
-                transform_linear = transforms.Compose([
-                    #transforms.ToPILImage(),
-                    transforms.RandomCrop(32, padding=4),
-                    transforms.RandomHorizontalFlip(),
-                    transforms.RandomRotation(15),
-                    # transforms.ToTensor(),
-                    transforms.Normalize(data_normalize_mean, data_normalize_std)
-                ])
+                # # #for supervised learning results
+                # transform_linear = transforms.Compose([
+                #     #transforms.ToPILImage(),
+                #     transforms.RandomCrop(32, padding=4),
+                #     transforms.RandomHorizontalFlip(),
+                #     transforms.RandomRotation(15),
+                #     # transforms.ToTensor(),
+                #     transforms.Normalize(data_normalize_mean, data_normalize_std)
+                # ])
 
-                # transform_linear = transforms.Compose( [
-                #         transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
-                #         transforms.RandomHorizontalFlip(),
-                #         transforms.Normalize(data_normalize_mean, data_normalize_std),
-                #     ] )
+                transform_linear = transforms.Compose( [
+                        transforms.RandomResizedCrop(random_crop_size,  interpolation=transforms.InterpolationMode.BICUBIC), # scale=(0.2, 1.0) is possible
+                        transforms.RandomHorizontalFlip(),
+                        transforms.Normalize(data_normalize_mean, data_normalize_std),
+                    ] )
             else:
                 transform_test = valid_transform
                 transform_linear = valid_transform
