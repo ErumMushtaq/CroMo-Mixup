@@ -1,4 +1,4 @@
-# CroMo-Mixup
+# CroMo-Mixup: Augmenting Cross-Model Representations for Continual Self-Supervised Learning  [ECCV2024]
 This repository will hold the official code of CroMo-Mixup framework introduced in our ECCV2024 paper "CroMo-Mixup: Augmenting Cross-Model Representations for Continual Self-Supervised Learning".
 
 ![](/utils/CroMo-Mixup.jpg)
